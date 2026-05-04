@@ -6,12 +6,14 @@ const districtRoutes = require("./routes/districtRoutes");
 const cityRoutes = require("./routes/cityRoutes");
 const pincodeRoutes = require("./routes/pincodeRoutes");
 const countryRoutes = require("./routes/countryRoutes");
+const shipmentRoutes = require("./routes/shipmentRoutes");
+
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
-
+app.use("/api/shipments", shipmentRoutes);
 app.use("/api/states", stateRoutes);
 app.use("/api/districts", districtRoutes);
 app.use("/api/cities", cityRoutes);
