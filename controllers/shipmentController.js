@@ -124,13 +124,23 @@ exports.getAllShipments = (req, res) => {
     SELECT 
       s.*,
 
+      -- sender
       sender.name AS sender_name,
       sender.phone AS sender_phone,
       sender.address AS sender_address,
+      sender.state_id AS sender_state_id,
+      sender.district_id AS sender_district_id,
+      sender.city_id AS sender_city_id,
+      sender.pincode_id AS sender_pincode_id,
 
+      -- receiver
       receiver.name AS receiver_name,
       receiver.phone AS receiver_phone,
-      receiver.address AS receiver_address
+      receiver.address AS receiver_address,
+      receiver.state_id AS receiver_state_id,
+      receiver.district_id AS receiver_district_id,
+      receiver.city_id AS receiver_city_id,
+      receiver.pincode_id AS receiver_pincode_id
 
     FROM shipments s
 
