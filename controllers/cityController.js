@@ -1,21 +1,40 @@
 const db = require("../config/db");
 
 exports.getCities = (req, res) => {
-  db.query("SELECT * FROM cities", (err, result) => {
+  const sql = `
+    SELECT 
+      c.*, 
+      d.name AS district_name, 
+      s.name AS state_name, 
+      co.name AS country_name
+    FROM cities c
+    LEFT JOIN districts d ON c.district_id = d.id
+    LEFT JOIN states s ON c.state_id = s.id
+    LEFT JOIN countries co ON s.country_id = co.id
+  `;
+  db.query(sql, (err, result) => {
     if (err) return res.status(500).json(err);
     res.json(result);
   });
 };
 
 exports.getCitiesByDistrict = (req, res) => {
-  db.query(
-    "SELECT * FROM cities WHERE district_id = ?",
-    [req.params.districtId],
-    (err, result) => {
-      if (err) return res.status(500).json(err);
-      res.json(result);
-    }
-  );
+  const sql = `
+    SELECT 
+      c.*, 
+      d.name AS district_name, 
+      s.name AS state_name, 
+      co.name AS country_name
+    FROM cities c
+    LEFT JOIN districts d ON c.district_id = d.id
+    LEFT JOIN states s ON c.state_id = s.id
+    LEFT JOIN countries co ON s.country_id = co.id
+    WHERE c.district_id = ?
+  `;
+  db.query(sql, [req.params.districtId], (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result);
+  });
 };
 
 exports.createCity = (req, res) => {

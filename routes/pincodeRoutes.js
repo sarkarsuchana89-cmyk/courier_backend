@@ -4,11 +4,16 @@ const {
   createPincode,
   getPincodes,
   updatePincode,
-  deletePincode
+  deletePincode,
+  getByPincode // 🔥 NEW
 } = require("../controllers/pincodeController");
 
 router.post("/", createPincode);
 router.get("/", getPincodes);
+
+// 🔥 NEW → autofill API
+router.get("/:pincode", getByPincode);
+
 router.put("/:id", updatePincode);
 router.delete("/:id", deletePincode);
 
