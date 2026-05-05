@@ -120,7 +120,30 @@ exports.createShipment = (req, res) => {
 
 // 🔥 GET ALL
 exports.getAllShipments = (req, res) => {
-  db.query("SELECT * FROM shipments", (err, result) => {
+  const sql = `
+    SELECT 
+      s.*,
+
+      sender.name AS sender_name,
+      sender.phone AS sender_phone,
+      sender.address AS sender_address,
+
+      receiver.name AS receiver_name,
+      receiver.phone AS receiver_phone,
+      receiver.address AS receiver_address
+
+    FROM shipments s
+
+    LEFT JOIN shipment_addresses sender 
+      ON s.id = sender.shipment_id AND sender.type = 'sender'
+
+    LEFT JOIN shipment_addresses receiver 
+      ON s.id = receiver.shipment_id AND receiver.type = 'receiver'
+
+    ORDER BY s.id DESC
+  `;
+
+  db.query(sql, (err, result) => {
     if (err) return sendError(res, err);
     res.json(result);
   });
