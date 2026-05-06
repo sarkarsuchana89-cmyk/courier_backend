@@ -155,15 +155,25 @@ exports.getAllShipments = (req, res) => {
       -- sender
       sender.name AS sender_name,
       sender.phone AS sender_phone,
+      sender.whatsapp AS sender_whatsapp,
+      sender.whatsapp AS sender_whatsapp_no,
+      sender.whatsapp AS sender_whatsapp_number,
+      sender.email AS sender_email,
       sender.address AS sender_address,
       sender.state_id AS sender_state_id,
       sender.district_id AS sender_district_id,
       sender.city_id AS sender_city_id,
       sender.pincode_id AS sender_pincode_id,
+      
 
       -- receiver
       receiver.name AS receiver_name,
+      receiver.reference_name AS receiver_reference_name,
       receiver.phone AS receiver_phone,
+      receiver.whatsapp AS receiver_whatsapp,
+      receiver.email AS receiver_email,
+      receiver.email AS receiver_from_email,
+      receiver.email AS receiver_email_id,
       receiver.address AS receiver_address,
       receiver.state_id AS receiver_state_id,
       receiver.district_id AS receiver_district_id,
@@ -203,10 +213,19 @@ exports.getShipmentByAwb = (req, res) => {
       db.query("SELECT * FROM shipment_tracking WHERE shipment_id = ?", [shipment.id], (err3, track) => {
         if (err3) return sendError(res, err3);
 
+        const sender = addr.find(a => a.type === "sender");
+        const receiver = addr.find(a => a.type === "receiver");
+
         res.json({
           shipment,
-          sender: addr.find(a => a.type === "sender"),
-          receiver: addr.find(a => a.type === "receiver"),
+          sender,
+          receiver,
+          // Backward-compatible flattened keys for edit-form hydration
+          sender_whatsapp: sender?.whatsapp ?? null,
+          sender_email: sender?.email ?? null,
+          receiver_whatsapp: receiver?.whatsapp ?? null,
+          receiver_email: receiver?.email ?? null,
+          receiver_reference_name: receiver?.reference_name ?? null,
           tracking: track
         });
       });
