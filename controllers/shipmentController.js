@@ -232,3 +232,180 @@ exports.getShipmentByAwb = (req, res) => {
     });
   });
 };
+
+exports.updateShipment = (req, res) => {
+  const { id } = req.params;
+  const errors = validate(req.body);
+  if (errors.length) {
+    return res.status(400).json({ message: "Validation failed", errors });
+  }
+
+  const {
+    origin_city_id,
+    destination_city_id,
+    shipment_date,    pcs,
+    weight,
+    mode,
+    contents,
+    declared_value = 0,
+    remarks,
+    return_details,
+    cust_ref_no,
+    sl_no,
+    status,
+    sender,
+    receiver
+  } = req.body;
+
+  db.getConnection((err, conn) => {
+    if (err) return sendError(res, err);
+
+    conn.beginTransaction((txErr) => {
+      if (txErr) {
+        conn.release();
+        return sendError(res, txErr);
+      }
+
+      const shipmentSql = `
+        UPDATE shipments
+        SET origin_city_id = ?,
+            destination_city_id = ?,
+            shipment_date = ?,            pcs = ?,
+            weight = ?,
+            mode = ?,
+            contents = ?,
+            declared_value = ?,
+            remarks = ?,
+            return_details = ?,
+            cust_ref_no = ?,
+            sl_no = ?
+        WHERE id = ?
+      `;
+
+      conn.query(
+        shipmentSql,
+        [
+          origin_city_id,
+          destination_city_id,
+          shipment_date,          pcs,
+          weight,
+          mode,
+          contents,
+          declared_value,
+          remarks,
+          return_details,
+          cust_ref_no,
+          sl_no,
+          id,
+        ],
+        (shipmentErr, shipmentResult) => {
+          if (shipmentErr) return conn.rollback(() => { conn.release(); sendError(res, shipmentErr); });
+          if (!shipmentResult.affectedRows) {
+            return conn.rollback(() => {
+              conn.release();
+              res.status(404).json({ message: "Shipment not found" });
+            });
+          }
+
+          const updateAddress = (type, addressData, done) => {
+            const addressSql = `
+              UPDATE shipment_addresses
+              SET name = ?,
+                  reference_name = ?,
+                  address = ?,
+                  pincode_id = ?,
+                  city_id = ?,
+                  district_id = ?,
+                  state_id = ?,
+                  country_id = ?,
+                  phone = ?,
+                  whatsapp = ?,
+                  email = ?
+              WHERE shipment_id = ? AND type = ?
+            `;
+
+            const params = [
+              addressData?.name || null,
+              addressData?.reference_name || null,
+              addressData?.address || null,
+              addressData?.pincode_id || null,
+              addressData?.city_id || null,
+              addressData?.district_id || null,
+              addressData?.state_id || null,
+              addressData?.country_id || null,
+              addressData?.phone || null,
+              addressData?.whatsapp || null,
+              addressData?.email || null,
+              id,
+              type,
+            ];
+
+            conn.query(addressSql, params, (addressErr, addressResult) => {
+              if (addressErr) return done(addressErr);
+
+              if (addressResult.affectedRows > 0) return done();
+
+              const insertAddressSql = `
+                INSERT INTO shipment_addresses
+                (shipment_id, type, name, reference_name, address, pincode_id, city_id, district_id, state_id, country_id, phone, whatsapp, email)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `;
+
+              conn.query(
+                insertAddressSql,
+                [
+                  id,
+                  type,
+                  addressData?.name || null,
+                  addressData?.reference_name || null,
+                  addressData?.address || null,
+                  addressData?.pincode_id || null,
+                  addressData?.city_id || null,
+                  addressData?.district_id || null,
+                  addressData?.state_id || null,
+                  addressData?.country_id || null,
+                  addressData?.phone || null,
+                  addressData?.whatsapp || null,
+                  addressData?.email || null,
+                ],
+                done
+              );
+            });
+          };
+
+          updateAddress("sender", sender, (senderErr) => {
+            if (senderErr) return conn.rollback(() => { conn.release(); sendError(res, senderErr); });
+
+            updateAddress("receiver", receiver, (receiverErr) => {
+              if (receiverErr) return conn.rollback(() => { conn.release(); sendError(res, receiverErr); });
+
+              if (status) {
+                conn.query(
+                  "INSERT INTO shipment_tracking (shipment_id, status) VALUES (?, ?)",
+                  [id, status],
+                  (trackingErr) => {
+                    if (trackingErr) return conn.rollback(() => { conn.release(); sendError(res, trackingErr); });
+
+                    conn.commit((commitErr) => {
+                      if (commitErr) return conn.rollback(() => { conn.release(); sendError(res, commitErr); });
+                      conn.release();
+                      res.json({ message: "Shipment updated", id: Number(id) });
+                    });
+                  }
+                );
+                return;
+              }
+
+              conn.commit((commitErr) => {
+                if (commitErr) return conn.rollback(() => { conn.release(); sendError(res, commitErr); });
+                conn.release();
+                res.json({ message: "Shipment updated", id: Number(id) });
+              });
+            });
+          });
+        }
+      );
+    });
+  });
+};
+

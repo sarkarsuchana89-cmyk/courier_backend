@@ -8,7 +8,10 @@ router.post("/", shipmentController.createShipment);
 // get all shipments
 router.get("/", shipmentController.getAllShipments);
 
-// 🔥 NEW → get by AWB
+// update shipment
+router.put("/:id", shipmentController.updateShipment);
+
+// get by AWB
 router.get("/:awb", shipmentController.getShipmentByAwb);
 
 module.exports = router;
