@@ -8,6 +8,7 @@ const pincodeRoutes = require("./routes/pincodeRoutes");
 const countryRoutes = require("./routes/countryRoutes");
 const shipmentRoutes = require("./routes/shipmentRoutes");
 
+const otpRoutes = require("./routes/otpRoutes");
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use("/api/districts", districtRoutes);
 app.use("/api/cities", cityRoutes);
 app.use("/api/pincodes", pincodeRoutes);
 app.use("/api/countries", countryRoutes);
+app.use("/api/otp", otpRoutes);
 app.use("/",(req,res)=>{
     res.send("Hello World")
 })
