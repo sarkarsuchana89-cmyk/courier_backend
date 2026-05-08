@@ -11,6 +11,12 @@ router.get("/", shipmentController.getAllShipments);
 // update shipment
 router.put("/:id", shipmentController.updateShipment);
 
+// shipment events (timeline)
+router.get("/:id/events", shipmentController.getShipmentEvents);
+router.post("/:id/events", shipmentController.createShipmentEvent);
+router.put("/:id/events/:eventId", shipmentController.updateShipmentEvent);
+router.delete("/:id/events/:eventId", shipmentController.deleteShipmentEvent);
+
 // get by AWB
 router.get("/:awb", shipmentController.getShipmentByAwb);
 
