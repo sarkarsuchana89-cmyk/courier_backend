@@ -31,6 +31,7 @@ const EVENT_TYPE_TO_STATUS = {
   warehouse: "Delivered in Warehouse",
   out_delivery: "Out for Delivery",
   returned: "Returned",
+  reschedule: "Reschedule Requested",
 };
 
 const STATUS_TO_EVENT_TYPE = Object.entries(EVENT_TYPE_TO_STATUS).reduce((acc, [k, v]) => {
@@ -532,7 +533,7 @@ exports.updateShipment = (req, res) => {
     sender,
     receiver
   } = req.body;
-
+  
   db.getConnection((err, conn) => {
     if (err) return sendError(res, err);
 
@@ -685,3 +686,119 @@ exports.updateShipment = (req, res) => {
   });
 };
 
+exports.createRescheduleRequest = (req, res) => {
+  const shipmentId = Number(req.params.id);
+
+  if (!shipmentId) {
+    return res.status(400).json({
+      message: "Invalid shipment id"
+    });
+  }
+
+  const {
+    requested_date,
+    time_slot,
+    requested_time,
+    requested_by_email
+  } = req.body;
+
+  if (!requested_date) {
+    return res.status(400).json({
+      message: "requested_date required"
+    });
+  }
+
+  // 1. CHECK SHIPMENT EXISTS
+  db.query(
+    "SELECT id FROM shipments WHERE id = ?",
+    [shipmentId],
+    (checkErr, shipmentRows) => {
+
+      if (checkErr) return sendError(res, checkErr);
+
+      if (!shipmentRows.length) {
+        return res.status(404).json({
+          message: "Shipment not found"
+        });
+      }
+
+      // 2. INSERT RESCHEDULE REQUEST
+     const insertRequestSql = `
+  INSERT INTO shipment_reschedule_requests
+  (
+    shipment_id,
+    requested_date,
+    time_slot,
+    requested_time,
+    requested_by_email
+  )
+  VALUES (?, ?, ?, ?, ?)
+`;
+
+      db.query(
+        insertRequestSql,
+        [
+          shipmentId,
+          requested_date,
+          time_slot || null,
+           requested_time || null,
+          requested_by_email || null
+        ],
+        (insertErr, result) => {
+
+          if (insertErr) return sendError(res, insertErr);
+
+          // 3. INSERT TIMELINE EVENT
+          const eventSql = `
+            INSERT INTO shipment_events
+            (
+              shipment_id,
+              event_type,
+              status,
+              note,
+              event_time
+            )
+            VALUES (?, ?, ?, ?, ?)
+          `;
+
+          const note =
+  `Customer requested delivery on ${requested_date}` +
+  (time_slot ? ` (${time_slot})` : "") +
+  (requested_time ? ` at ${requested_time}` : "");
+
+          db.query(
+            eventSql,
+            [
+              shipmentId,
+              "reschedule",
+              "Reschedule Requested",
+              note,
+              new Date()
+            ],
+            (eventErr) => {
+
+              if (eventErr) return sendError(res, eventErr);
+
+              // 4. SYNC SHIPMENT STATUS
+              syncShipmentStatusFromEvents(
+                shipmentId,
+                (syncErr, shipmentStatus) => {
+
+                  if (syncErr) {
+                    return sendError(res, syncErr);
+                  }
+
+                  return res.json({
+                    message: "Reschedule request created",
+                    request_id: result.insertId,
+                    shipment_status: shipmentStatus
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+  );
+};
