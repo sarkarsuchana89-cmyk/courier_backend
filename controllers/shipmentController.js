@@ -73,6 +73,8 @@ const mapShipmentEventRow = (row) => ({
   event_type: row.event_type || null,
 });
 
+
+
 const fetchShipmentEventsByIds = (shipmentIds, done) => {
   if (!shipmentIds.length) return done(null, {});
   const sql = `
