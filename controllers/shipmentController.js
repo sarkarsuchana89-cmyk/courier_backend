@@ -686,6 +686,101 @@ exports.updateShipment = (req, res) => {
   });
 };
 
+exports.deleteShipment = (req, res) => {
+  const shipmentId = Number(req.params.id);
+  if (!shipmentId) {
+    return res.status(400).json({ message: "Invalid shipment id" });
+  }
+
+  db.getConnection((connErr, conn) => {
+    if (connErr) return sendError(res, connErr);
+
+    conn.beginTransaction((txErr) => {
+      if (txErr) {
+        conn.release();
+        return sendError(res, txErr);
+      }
+
+      conn.query("SELECT id FROM shipments WHERE id = ?", [shipmentId], (checkErr, rows) => {
+        if (checkErr) {
+          return conn.rollback(() => {
+            conn.release();
+            sendError(res, checkErr);
+          });
+        }
+        if (!rows.length) {
+          return conn.rollback(() => {
+            conn.release();
+            res.status(404).json({ message: "Shipment not found" });
+          });
+        }
+
+        conn.query("DELETE FROM shipment_events WHERE shipment_id = ?", [shipmentId], (eventErr) => {
+          if (eventErr) {
+            return conn.rollback(() => {
+              conn.release();
+              sendError(res, eventErr);
+            });
+          }
+
+          conn.query("DELETE FROM shipment_tracking WHERE shipment_id = ?", [shipmentId], (trackingErr) => {
+            if (trackingErr) {
+              return conn.rollback(() => {
+                conn.release();
+                sendError(res, trackingErr);
+              });
+            }
+
+            conn.query("DELETE FROM shipment_addresses WHERE shipment_id = ?", [shipmentId], (addrErr) => {
+              if (addrErr) {
+                return conn.rollback(() => {
+                  conn.release();
+                  sendError(res, addrErr);
+                });
+              }
+
+              conn.query("DELETE FROM shipment_reschedule_requests WHERE shipment_id = ?", [shipmentId], (resErr) => {
+                if (resErr) {
+                  return conn.rollback(() => {
+                    conn.release();
+                    sendError(res, resErr);
+                  });
+                }
+
+                conn.query("DELETE FROM shipments WHERE id = ?", [shipmentId], (shipErr, result) => {
+                  if (shipErr) {
+                    return conn.rollback(() => {
+                      conn.release();
+                      sendError(res, shipErr);
+                    });
+                  }
+                  if (!result.affectedRows) {
+                    return conn.rollback(() => {
+                      conn.release();
+                      res.status(404).json({ message: "Shipment not found" });
+                    });
+                  }
+
+                  conn.commit((commitErr) => {
+                    if (commitErr) {
+                      return conn.rollback(() => {
+                        conn.release();
+                        sendError(res, commitErr);
+                      });
+                    }
+                    conn.release();
+                    return res.json({ message: "Shipment deleted", id: shipmentId });
+                  });
+                });
+              });
+            });
+          });
+        });
+      });
+    });
+  });
+};
+
 exports.createRescheduleRequest = (req, res) => {
   const shipmentId = Number(req.params.id);
 

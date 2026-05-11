@@ -10,6 +10,7 @@ router.get("/", shipmentController.getAllShipments);
 
 // update shipment
 router.put("/:id", shipmentController.updateShipment);
+router.delete("/:id", shipmentController.deleteShipment);
 
 // shipment events (timeline)
 router.get("/:id/events", shipmentController.getShipmentEvents);
