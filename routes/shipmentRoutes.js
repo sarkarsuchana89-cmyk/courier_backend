@@ -17,6 +17,8 @@ router.get("/:id/events", shipmentController.getShipmentEvents);
 router.post("/:id/events", shipmentController.createShipmentEvent);
 router.put("/:id/events/:eventId", shipmentController.updateShipmentEvent);
 router.delete("/:id/events/:eventId", shipmentController.deleteShipmentEvent);
+router.get("/reschedule-requests/all", shipmentController.getAllRescheduleRequests);
+router.patch("/reschedule-requests/:requestId/status", shipmentController.updateRescheduleRequestStatus);
 router.post(
   "/:id/reschedule",
   shipmentController.createRescheduleRequest

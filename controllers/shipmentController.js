@@ -140,6 +140,44 @@ const fetchShipmentEventsSingle = (shipmentId, done) => {
   });
 };
 
+const fetchRescheduleRequestsByShipmentIds = (shipmentIds, done) => {
+  if (!shipmentIds.length) return done(null, {});
+  const sql = `
+    SELECT
+      r.*,
+      s.awb_number,
+      receiver.name AS receiver_name,
+      receiver.phone AS receiver_phone
+    FROM shipment_reschedule_requests r
+    INNER JOIN shipments s ON s.id = r.shipment_id
+    LEFT JOIN shipment_addresses receiver
+      ON receiver.shipment_id = r.shipment_id AND receiver.type = 'receiver'
+    WHERE r.shipment_id IN (?)
+    ORDER BY r.created_at DESC, r.id DESC
+  `;
+  db.query(sql, [shipmentIds], (err, rows) => {
+    if (err) return done(err);
+    const grouped = rows.reduce((acc, row) => {
+      const key = Number(row.shipment_id);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push({
+        id: row.id,
+        shipment_id: row.shipment_id,
+        requested_date: row.requested_date,
+        time_slot: row.time_slot || "",
+        requested_time: row.requested_time || "",
+        requested_by_email: row.requested_by_email || "",
+        status: row.status || "Pending",
+        requested_at: row.requested_at || row.created_at || null,
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null,
+      });
+      return acc;
+    }, {});
+    return done(null, grouped);
+  });
+};
+
 const syncShipmentStatusFromEvents = (shipmentId, done) => {
   const sql = `
     SELECT status
@@ -334,13 +372,18 @@ exports.getAllShipments = (req, res) => {
       fetchLegacyTrackingByIds(shipmentIds, (legacyErr, legacyMap) => {
         if (legacyErr) return sendError(res, legacyErr);
 
-        const enriched = result.map((row) => ({
-          ...row,
-          tracking_events: eventMap[Number(row.id)]?.length
-            ? eventMap[Number(row.id)]
-            : (legacyMap[Number(row.id)] || []),
-        }));
-        return res.json(enriched);
+        fetchRescheduleRequestsByShipmentIds(shipmentIds, (reqErr, requestMap) => {
+          if (reqErr) return sendError(res, reqErr);
+
+          const enriched = result.map((row) => ({
+            ...row,
+            tracking_events: eventMap[Number(row.id)]?.length
+              ? eventMap[Number(row.id)]
+              : (legacyMap[Number(row.id)] || []),
+            schedule_requests: requestMap[Number(row.id)] || [],
+          }));
+          return res.json(enriched);
+        });
       });
     });
   });
@@ -898,4 +941,74 @@ exports.createRescheduleRequest = (req, res) => {
       );
     }
   );
+};
+
+exports.getAllRescheduleRequests = (req, res) => {
+  const sql = `
+    SELECT
+      r.*,
+      s.awb_number,
+      s.shipment_date,
+      s.mode,
+      sender.name AS sender_name,
+      receiver.name AS receiver_name,
+      receiver.phone AS receiver_phone
+    FROM shipment_reschedule_requests r
+    INNER JOIN shipments s ON s.id = r.shipment_id
+    LEFT JOIN shipment_addresses sender
+      ON sender.shipment_id = s.id AND sender.type = 'sender'
+    LEFT JOIN shipment_addresses receiver
+      ON receiver.shipment_id = s.id AND receiver.type = 'receiver'
+    ORDER BY r.created_at DESC, r.id DESC
+  `;
+
+  db.query(sql, (err, rows) => {
+    if (err) return sendError(res, err);
+    const payload = rows.map((row) => ({
+      id: row.id,
+      shipment_id: row.shipment_id,
+      awb_number: row.awb_number,
+      shipment_date: row.shipment_date,
+      mode: row.mode,
+      sender_name: row.sender_name || "",
+      receiver_name: row.receiver_name || "",
+      receiver_phone: row.receiver_phone || "",
+      requested_date: row.requested_date,
+      time_slot: row.time_slot || "",
+      requested_time: row.requested_time || "",
+      requested_by_email: row.requested_by_email || "",
+      status: row.status || "Pending",
+      requested_at: row.requested_at || row.created_at || null,
+      created_at: row.created_at || null,
+      updated_at: row.updated_at || null,
+    }));
+    return res.json(payload);
+  });
+};
+
+exports.updateRescheduleRequestStatus = (req, res) => {
+  const requestId = Number(req.params.requestId);
+  const nextStatusRaw = String(req.body?.status || "").trim();
+  const statusMap = {
+    pending: "Pending",
+    approved: "Accepted",
+    accepted: "Accepted",
+    rejected: "Rejected",
+  };
+  const nextStatus = statusMap[nextStatusRaw.toLowerCase()];
+
+  if (!requestId) return res.status(400).json({ message: "Invalid request id" });
+  if (!nextStatus) return res.status(400).json({ message: "Invalid status. Use Pending/Accepted/Rejected." });
+
+  const updateSql = `
+    UPDATE shipment_reschedule_requests
+    SET status = ?, updated_at = NOW()
+    WHERE id = ?
+  `;
+
+  db.query(updateSql, [nextStatus, requestId], (updErr, updResult) => {
+    if (updErr) return sendError(res, updErr);
+    if (!updResult.affectedRows) return res.status(404).json({ message: "Reschedule request not found" });
+    return res.json({ message: "Reschedule request status updated", id: requestId, status: nextStatus });
+  });
 };
