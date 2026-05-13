@@ -25,11 +25,35 @@ const validate = (body) => {
   return errs;
 };
 
-const generateScannerFriendlyAwb = () => {
-  // 12-digit numeric AWB works reliably with common handheld scanners.
-  const timePart = Date.now().toString().slice(-8);
-  const randomPart = Math.floor(Math.random() * 10000).toString().padStart(4, "0");
-  return `${timePart}${randomPart}`;
+const AWB_PREFIX = "1778";
+const AWB_TOTAL_DIGITS = 12;
+const AWB_SEQUENCE_DIGITS = AWB_TOTAL_DIGITS - AWB_PREFIX.length;
+
+const generateNextAwb = (conn, done) => {
+  const sql = `
+    SELECT awb_number
+    FROM shipments
+    WHERE awb_number LIKE ?
+      AND CHAR_LENGTH(awb_number) = ?
+    ORDER BY awb_number DESC
+    LIMIT 1
+    FOR UPDATE
+  `;
+
+  conn.query(sql, [`${AWB_PREFIX}%`, AWB_TOTAL_DIGITS], (err, rows) => {
+    if (err) return done(err);
+
+    const lastAwb = rows?.[0]?.awb_number || null;
+    const lastSequence = lastAwb ? Number(String(lastAwb).slice(AWB_PREFIX.length)) : 0;
+    const nextSequence = lastSequence + 1;
+    const nextSequenceStr = String(nextSequence).padStart(AWB_SEQUENCE_DIGITS, "0");
+
+    if (nextSequenceStr.length > AWB_SEQUENCE_DIGITS) {
+      return done(new Error("AWB sequence overflow for configured prefix"));
+    }
+
+    return done(null, `${AWB_PREFIX}${nextSequenceStr}`);
+  });
 };
 
 const EVENT_TYPE_TO_STATUS = {
@@ -229,38 +253,40 @@ exports.createShipment = (req, res) => {
     receiver
   } = req.body;
 
-  const awb = generateScannerFriendlyAwb();
-const createdAt = new Date();
+  const createdAt = new Date();
   db.getConnection((err, conn) => {
     if (err) return sendError(res, err);
 
     conn.beginTransaction((err) => {
       if (err) return sendError(res, err);
 
-      const shipmentSql = `
-        INSERT INTO shipments
-        (awb_number, origin_city_id, destination_city_id, shipment_date,
-         pcs, weight, mode, contents, declared_value,
-         remarks, return_details, cust_ref_no, sl_no,created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?)
-      `;
+      generateNextAwb(conn, (awbErr, awb) => {
+        if (awbErr) return conn.rollback(() => sendError(res, awbErr, "AWB generation failed"));
 
-      conn.query(shipmentSql, [
-        awb,
-        origin_city_id,
-        destination_city_id,
-        shipment_date,
-        pcs,
-        weight,
-        mode,
-        contents,
-        declared_value,
-        remarks,
-        return_details,
-        cust_ref_no,
-        sl_no,
-        createdAt
-      ], (err, result) => {
+        const shipmentSql = `
+          INSERT INTO shipments
+          (awb_number, origin_city_id, destination_city_id, shipment_date,
+           pcs, weight, mode, contents, declared_value,
+           remarks, return_details, cust_ref_no, sl_no,created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?)
+        `;
+
+        conn.query(shipmentSql, [
+          awb,
+          origin_city_id,
+          destination_city_id,
+          shipment_date,
+          pcs,
+          weight,
+          mode,
+          contents,
+          declared_value,
+          remarks,
+          return_details,
+          cust_ref_no,
+          sl_no,
+          createdAt
+        ], (err, result) => {
         if (err) return conn.rollback(() => sendError(res, err));
 
         const shipmentId = result.insertId;
@@ -312,14 +338,15 @@ VALUES ?
             (err3) => {
               if (err3) return conn.rollback(() => sendError(res, err3));
 
-              conn.commit((err4) => {
-                if (err4) return conn.rollback(() => sendError(res, err4));
+                conn.commit((err4) => {
+                  if (err4) return conn.rollback(() => sendError(res, err4));
 
-                conn.release();
-                res.json({ message: "Shipment created", awb });
-              });
-            }
-          );
+                  conn.release();
+                  res.json({ message: "Shipment created", awb });
+                });
+              }
+            );
+          });
         });
       });
     });
