@@ -230,7 +230,7 @@ exports.createShipment = (req, res) => {
   } = req.body;
 
   const awb = generateScannerFriendlyAwb();
-
+const createdAt = new Date();
   db.getConnection((err, conn) => {
     if (err) return sendError(res, err);
 
@@ -241,8 +241,8 @@ exports.createShipment = (req, res) => {
         INSERT INTO shipments
         (awb_number, origin_city_id, destination_city_id, shipment_date,
          pcs, weight, mode, contents, declared_value,
-         remarks, return_details, cust_ref_no, sl_no)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?)
+         remarks, return_details, cust_ref_no, sl_no,created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?)
       `;
 
       conn.query(shipmentSql, [
@@ -258,7 +258,8 @@ exports.createShipment = (req, res) => {
         remarks,
         return_details,
         cust_ref_no,
-        sl_no
+        sl_no,
+        createdAt
       ], (err, result) => {
         if (err) return conn.rollback(() => sendError(res, err));
 
@@ -306,8 +307,8 @@ VALUES ?
           if (err2) return conn.rollback(() => sendError(res, err2));
 
           conn.query(
-            "INSERT INTO shipment_tracking (shipment_id, status) VALUES (?, ?)",
-            [shipmentId, "Product Placed"],
+            "INSERT INTO shipment_tracking (shipment_id, status ,created_at) VALUES (?, ?, ?)",
+            [shipmentId, "Product Placed",createdAt],
             (err3) => {
               if (err3) return conn.rollback(() => sendError(res, err3));
 
@@ -707,11 +708,11 @@ exports.updateShipment = (req, res) => {
 
             updateAddress("receiver", receiver, (receiverErr) => {
               if (receiverErr) return conn.rollback(() => { conn.release(); sendError(res, receiverErr); });
-
+               const createdAt = new Date();
               if (status) {
                 conn.query(
-                  "INSERT INTO shipment_tracking (shipment_id, status) VALUES (?, ?)",
-                  [id, status],
+                  "INSERT INTO shipment_tracking (shipment_id, status,created_at) VALUES (?, ?, ?)",
+                  [id, status ,createdAt],
                   (trackingErr) => {
                     if (trackingErr) return conn.rollback(() => { conn.release(); sendError(res, trackingErr); });
 
