@@ -25,6 +25,13 @@ const validate = (body) => {
   return errs;
 };
 
+const generateScannerFriendlyAwb = () => {
+  // 12-digit numeric AWB works reliably with common handheld scanners.
+  const timePart = Date.now().toString().slice(-8);
+  const randomPart = Math.floor(Math.random() * 10000).toString().padStart(4, "0");
+  return `${timePart}${randomPart}`;
+};
+
 const EVENT_TYPE_TO_STATUS = {
   picked: "Pickup and Despatch",
   transit: "In Transit",
@@ -222,7 +229,7 @@ exports.createShipment = (req, res) => {
     receiver
   } = req.body;
 
-  const awb = "AWB" + Date.now();
+  const awb = generateScannerFriendlyAwb();
 
   db.getConnection((err, conn) => {
     if (err) return sendError(res, err);
