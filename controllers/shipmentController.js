@@ -201,7 +201,6 @@ const fetchRescheduleRequestsByShipmentIds = (shipmentIds, done) => {
         status: row.status || "Pending",
         requested_at: row.requested_at || row.created_at || null,
         created_at: row.created_at || null,
-        updated_at: row.updated_at || null,
       });
       return acc;
     }, {});
@@ -1015,7 +1014,6 @@ exports.getAllRescheduleRequests = (req, res) => {
       status: row.status || "Pending",
       requested_at: row.requested_at || row.created_at || null,
       created_at: row.created_at || null,
-      updated_at: row.updated_at || null,
     }));
     return res.json(payload);
   });
@@ -1037,7 +1035,7 @@ exports.updateRescheduleRequestStatus = (req, res) => {
 
   const updateSql = `
     UPDATE shipment_reschedule_requests
-    SET status = ?, updated_at = NOW()
+    SET status = ?
     WHERE id = ?
   `;
 
