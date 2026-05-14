@@ -208,6 +208,54 @@ const fetchRescheduleRequestsByShipmentIds = (shipmentIds, done) => {
   });
 };
 
+const STATUS_FLAG_UPDATES = {
+  "Product Placed": {
+    product_placed_flag: 1
+  },
+
+  "Pickup and Despatch": {
+    product_placed_flag: 1,
+    pickup_completed_flag: 1
+  },
+
+  "In Transit": {
+    product_placed_flag: 1,
+    pickup_completed_flag: 1,
+    in_transit_flag: 1
+  },
+
+  "Delivered in Warehouse": {
+    product_placed_flag: 1,
+    pickup_completed_flag: 1,
+    in_transit_flag: 1,
+    warehouse_reached_flag: 1
+  },
+
+  "Out for Delivery": {
+    product_placed_flag: 1,
+    pickup_completed_flag: 1,
+    in_transit_flag: 1,
+    warehouse_reached_flag: 1
+  },
+
+  "Delivered": {
+    product_placed_flag: 1,
+    pickup_completed_flag: 1,
+    in_transit_flag: 1,
+    warehouse_reached_flag: 1,
+    delivered_flag: 1
+  },
+
+  "Returned": {
+    returned_flag: 1
+  },
+
+  "Reschedule Requested": {
+    reschedule_flag: 1
+  }
+};
+
+
 const syncShipmentStatusFromEvents = (shipmentId, done) => {
   const sql = `
     SELECT status
@@ -219,11 +267,27 @@ const syncShipmentStatusFromEvents = (shipmentId, done) => {
   db.query(sql, [shipmentId], (err, rows) => {
     if (err) return done(err);
     const nextStatus = rows?.[0]?.status || "Pending";
-    db.query(
-      "UPDATE shipments SET status = ? WHERE id = ?",
-      [nextStatus, shipmentId],
-      (updErr) => done(updErr, nextStatus)
-    );
+    const flagUpdates = STATUS_FLAG_UPDATES[nextStatus] || {};
+
+const fields = ["status = ?"];
+const values = [nextStatus];
+
+Object.entries(flagUpdates).forEach(([key, value]) => {
+  fields.push(`${key} = ?`);
+  values.push(value);
+});
+
+values.push(shipmentId);
+
+const updateSql = `
+  UPDATE shipments
+  SET ${fields.join(", ")}
+  WHERE id = ?
+`;
+
+db.query(updateSql, values, (updErr) => {
+  done(updErr, nextStatus);
+});
   });
 };
 
@@ -269,6 +333,10 @@ exports.createShipment = (req, res) => {
            remarks, return_details, cust_ref_no, sl_no,created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?)
         `;
+
+
+
+
 
         conn.query(shipmentSql, [
           awb,
