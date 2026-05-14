@@ -881,7 +881,7 @@ exports.createRescheduleRequest = (req, res) => {
       message: "requested_date required"
     });
   }
-
+  const createdAt = new Date();
   // 1. CHECK SHIPMENT EXISTS
   db.query(
     "SELECT id FROM shipments WHERE id = ?",
@@ -904,9 +904,10 @@ exports.createRescheduleRequest = (req, res) => {
     requested_date,
     time_slot,
     requested_time,
-    requested_by_email
+    requested_by_email,
+    created_at
   )
-  VALUES (?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?)
 `;
 
       db.query(
@@ -916,7 +917,8 @@ exports.createRescheduleRequest = (req, res) => {
           requested_date,
           time_slot || null,
            requested_time || null,
-          requested_by_email || null
+          requested_by_email || null,
+          createdAt
         ],
         (insertErr, result) => {
 
