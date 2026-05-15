@@ -61,6 +61,7 @@ const EVENT_TYPE_TO_STATUS = {
   transit: "In Transit",
   warehouse: "Delivered in Warehouse",
   out_delivery: "Out for Delivery",
+  delivered: "Delivered",
   returned: "Returned",
   reschedule: "Reschedule Requested",
 };
@@ -69,6 +70,27 @@ const STATUS_TO_EVENT_TYPE = Object.entries(EVENT_TYPE_TO_STATUS).reduce((acc, [
   acc[v] = k;
   return acc;
 }, {});
+
+// Backward compatibility for historical typo used by some clients.
+STATUS_TO_EVENT_TYPE.Delhivered = "delivered";
+
+const normalizeStatusValue = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return raw;
+  const map = {
+    delhiverd: "Delivered",
+    delhivered: "Delivered",
+    delivered: "Delivered",
+    "out for delivery": "Out for Delivery",
+    "pickup & despatch": "Pickup and Despatch",
+    "pickup and despatch": "Pickup and Despatch",
+    "in transit": "In Transit",
+    "delivered in warehouse": "Delivered in Warehouse",
+    returned: "Returned",
+    "reschedule requested": "Reschedule Requested",
+  };
+  return map[raw.toLowerCase()] || raw;
+};
 
 const toEventMeta = (row) => {
   const geo = {
@@ -103,8 +125,6 @@ const mapShipmentEventRow = (row) => ({
   created_by: row.created_by || null,
   event_type: row.event_type || null,
 });
-
-
 
 const fetchShipmentEventsByIds = (shipmentIds, done) => {
   if (!shipmentIds.length) return done(null, {});
@@ -266,7 +286,7 @@ const syncShipmentStatusFromEvents = (shipmentId, done) => {
   `;
   db.query(sql, [shipmentId], (err, rows) => {
     if (err) return done(err);
-    const nextStatus = rows?.[0]?.status || "Pending";
+    const nextStatus = normalizeStatusValue(rows?.[0]?.status || "Pending");
     const flagUpdates = STATUS_FLAG_UPDATES[nextStatus] || {};
 
 const fields = ["status = ?"];
@@ -599,8 +619,9 @@ exports.createShipmentEvent = (req, res) => {
   } = req.body;
 
   if (!event_time) return res.status(400).json({ message: "event_time required" });
-  const resolvedType = event_type || STATUS_TO_EVENT_TYPE[status];
-  const resolvedStatus = status || EVENT_TYPE_TO_STATUS[event_type];
+  const normalizedStatus = normalizeStatusValue(status);
+  const resolvedType = event_type || STATUS_TO_EVENT_TYPE[normalizedStatus];
+  const resolvedStatus = normalizeStatusValue(normalizedStatus || EVENT_TYPE_TO_STATUS[event_type]);
   if (!resolvedType) return res.status(400).json({ message: "event_type required or valid status mapping required" });
   if (!resolvedStatus) return res.status(400).json({ message: "status required or valid event_type mapping required" });
 
@@ -642,8 +663,9 @@ exports.updateShipmentEvent = (req, res) => {
     created_by = null,
   } = req.body;
 
-  const resolvedType = event_type || STATUS_TO_EVENT_TYPE[status];
-  const resolvedStatus = status || EVENT_TYPE_TO_STATUS[event_type];
+  const normalizedStatus = normalizeStatusValue(status);
+  const resolvedType = event_type || STATUS_TO_EVENT_TYPE[normalizedStatus];
+  const resolvedStatus = normalizeStatusValue(normalizedStatus || EVENT_TYPE_TO_STATUS[event_type]);
   if (!resolvedType) return res.status(400).json({ message: "event_type required or valid status mapping required" });
   if (!resolvedStatus) return res.status(400).json({ message: "status required or valid event_type mapping required" });
 
@@ -832,17 +854,35 @@ exports.updateShipment = (req, res) => {
               if (receiverErr) return conn.rollback(() => { conn.release(); sendError(res, receiverErr); });
                const createdAt = new Date();
               if (status) {
+                const normalizedStatus = normalizeStatusValue(status);
+                const flagUpdates = STATUS_FLAG_UPDATES[normalizedStatus] || {};
+                const fields = ["status = ?"];
+                const values = [normalizedStatus];
+
+                Object.entries(flagUpdates).forEach(([key, value]) => {
+                  fields.push(`${key} = ?`);
+                  values.push(value);
+                });
+                values.push(id);
+
                 conn.query(
                   "INSERT INTO shipment_tracking (shipment_id, status,created_at) VALUES (?, ?, ?)",
-                  [id, status ,createdAt],
+                  [id, normalizedStatus, createdAt],
                   (trackingErr) => {
                     if (trackingErr) return conn.rollback(() => { conn.release(); sendError(res, trackingErr); });
 
-                    conn.commit((commitErr) => {
-                      if (commitErr) return conn.rollback(() => { conn.release(); sendError(res, commitErr); });
-                      conn.release();
-                      res.json({ message: "Shipment updated", id: Number(id) });
-                    });
+                    conn.query(
+                      `UPDATE shipments SET ${fields.join(", ")} WHERE id = ?`,
+                      values,
+                      (statusErr) => {
+                        if (statusErr) return conn.rollback(() => { conn.release(); sendError(res, statusErr); });
+                        conn.commit((commitErr) => {
+                          if (commitErr) return conn.rollback(() => { conn.release(); sendError(res, commitErr); });
+                          conn.release();
+                          res.json({ message: "Shipment updated", id: Number(id) });
+                        });
+                      }
+                    );
                   }
                 );
                 return;
