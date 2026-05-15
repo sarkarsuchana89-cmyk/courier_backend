@@ -252,19 +252,21 @@ const STATUS_FLAG_UPDATES = {
   },
 
   "Out for Delivery": {
-    product_placed_flag: 1,
-    pickup_completed_flag: 1,
-    in_transit_flag: 1,
-    warehouse_reached_flag: 1
-  },
+  product_placed_flag: 1,
+  pickup_completed_flag: 1,
+  in_transit_flag: 1,
+  warehouse_reached_flag: 1,
+  out_for_delivery_flag: 1
+},
 
   "Delivered": {
-    product_placed_flag: 1,
-    pickup_completed_flag: 1,
-    in_transit_flag: 1,
-    warehouse_reached_flag: 1,
-    delivered_flag: 1
-  },
+  product_placed_flag: 1,
+  pickup_completed_flag: 1,
+  in_transit_flag: 1,
+  warehouse_reached_flag: 1,
+  out_for_delivery_flag: 1,
+  delivered_flag: 1
+},
 
   "Returned": {
     returned_flag: 1
