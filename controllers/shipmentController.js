@@ -400,19 +400,47 @@ VALUES ?
           if (err2) return conn.rollback(() => sendError(res, err2));
 
           conn.query(
-            "INSERT INTO shipment_tracking (shipment_id, status ,created_at) VALUES (?, ?, ?)",
-            [shipmentId, "Product Placed",createdAt],
-            (err3) => {
-              if (err3) return conn.rollback(() => sendError(res, err3));
+  "INSERT INTO shipment_tracking (shipment_id, status ,created_at) VALUES (?, ?, ?)",
+  [shipmentId, "Product Placed", createdAt],
+  (err3) => {
 
-                conn.commit((err4) => {
-                  if (err4) return conn.rollback(() => sendError(res, err4));
+    if (err3) {
+      return conn.rollback(() => sendError(res, err3));
+    }
 
-                  conn.release();
-                  res.json({ message: "Shipment created", awb });
-                });
-              }
-            );
+    conn.query(
+      `
+      UPDATE shipments
+      SET product_placed_flag = 1
+      WHERE id = ?
+      `,
+      [shipmentId],
+      (flagErr) => {
+
+        if (flagErr) {
+          return conn.rollback(() => sendError(res, flagErr));
+        }
+
+        conn.commit((err4) => {
+
+          if (err4) {
+            return conn.rollback(() => sendError(res, err4));
+          }
+
+          conn.release();
+
+          res.json({
+            message: "Shipment created",
+            awb
+          });
+
+        });
+
+      }
+    );
+
+  }
+);
           });
         });
       });
