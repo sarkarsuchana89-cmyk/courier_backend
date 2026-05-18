@@ -92,13 +92,51 @@ const normalizeStatusValue = (value) => {
   return map[raw.toLowerCase()] || raw;
 };
 
+const buildGeo = (prefix, row) => ({
+  country:
+    row[`${prefix}_country_name`] ||
+    row.country_name ||
+    "",
+
+  state:
+    row[`${prefix}_state_name`] ||
+    row.state_name ||
+    "",
+
+  district:
+    row[`${prefix}_district_name`] ||
+    row.district_name ||
+    "",
+
+  city:
+    row[`${prefix}_city_name`] ||
+    row.city_name ||
+    "",
+
+  country_id:
+    row[`${prefix}_country_id`] ||
+    row.country_id ||
+    null,
+
+  state_id:
+    row[`${prefix}_state_id`] ||
+    row.state_id ||
+    null,
+
+  district_id:
+    row[`${prefix}_district_id`] ||
+    row.district_id ||
+    null,
+
+  city_id:
+    row[`${prefix}_city_id`] ||
+    row.city_id ||
+    null,
+});
 const toEventMeta = (row) => {
-  const geo = {
-    country: row.country_name || "",
-    state: row.state_name || "",
-    district: row.district_name || "",
-    city: row.city_name || "",
-  };
+
+  const fromGeo = buildGeo("from", row);
+  const toGeo = buildGeo("to", row);
 
   const base = {
     tracking_label: row.tracking_label || "",
@@ -106,14 +144,42 @@ const toEventMeta = (row) => {
     user_name: row.created_by || "",
   };
 
-  if (row.event_type === "picked") return { ...base, pickup_geo: geo, pickup_location_name: row.branch_name || "" };
-  if (row.event_type === "transit") return { ...base, transit_from_geo: geo, transit_to_geo: geo, transit_location_name: row.branch_name || "", transit_hub_label: row.branch_name || "" };
-  if (row.event_type === "warehouse") return { ...base, warehouse_geo: geo, warehouse_location_name: row.branch_name || "" };
-  if (row.event_type === "out_delivery") return { ...base, out_for_delivery_geo: geo, out_for_delivery_location_name: row.branch_name || "" };
-  if (row.event_type === "returned") return { ...base, return_geo: geo, return_pickup_location_name: row.branch_name || "", source: row.branch_name || "", reason: row.note || "", return_type: "Rejected & Return" };
+  if (row.event_type === "picked") {
+    return {
+      ...base,
+      pickup_geo: fromGeo,
+      pickup_location_name: row.branch_name || ""
+    };
+  }
+
+  if (row.event_type === "transit") {
+    return {
+      ...base,
+      transit_from_geo: fromGeo,
+      transit_to_geo: toGeo,
+      transit_location_name: row.branch_name || "",
+      transit_hub_label: row.branch_name || ""
+    };
+  }
+
+  if (row.event_type === "warehouse") {
+    return {
+      ...base,
+      warehouse_geo: toGeo,
+      warehouse_location_name: row.branch_name || ""
+    };
+  }
+
+  if (row.event_type === "out_delivery") {
+    return {
+      ...base,
+      out_for_delivery_geo: toGeo,
+      out_for_delivery_location_name: row.branch_name || ""
+    };
+  }
+
   return base;
 };
-
 const mapShipmentEventRow = (row) => ({
   id: row.id,
   status: row.status || EVENT_TYPE_TO_STATUS[row.event_type] || "Pending",
@@ -127,31 +193,99 @@ const mapShipmentEventRow = (row) => ({
 });
 
 const fetchShipmentEventsByIds = (shipmentIds, done) => {
-  if (!shipmentIds.length) return done(null, {});
+
+  if (!shipmentIds.length) {
+    return done(null, {});
+  }
+
   const sql = `
     SELECT
       se.*,
+
+      -- NEW GEO (FROM)
+      from_co.name AS from_country_name,
+      from_st.name AS from_state_name,
+      from_di.name AS from_district_name,
+      from_ci.name AS from_city_name,
+
+      -- NEW GEO (TO)
+      to_co.name AS to_country_name,
+      to_st.name AS to_state_name,
+      to_di.name AS to_district_name,
+      to_ci.name AS to_city_name,
+
+      -- OLD GEO FALLBACK
       co.name AS country_name,
       st.name AS state_name,
       di.name AS district_name,
       ci.name AS city_name
+
     FROM shipment_events se
-    LEFT JOIN countries co ON se.country_id = co.id
-    LEFT JOIN states st ON se.state_id = st.id
-    LEFT JOIN districts di ON se.district_id = di.id
-    LEFT JOIN cities ci ON se.city_id = ci.id
+
+    -- FROM GEO
+    LEFT JOIN countries from_co
+      ON se.from_country_id = from_co.id
+
+    LEFT JOIN states from_st
+      ON se.from_state_id = from_st.id
+
+    LEFT JOIN districts from_di
+      ON se.from_district_id = from_di.id
+
+    LEFT JOIN cities from_ci
+      ON se.from_city_id = from_ci.id
+
+    -- TO GEO
+    LEFT JOIN countries to_co
+      ON se.to_country_id = to_co.id
+
+    LEFT JOIN states to_st
+      ON se.to_state_id = to_st.id
+
+    LEFT JOIN districts to_di
+      ON se.to_district_id = to_di.id
+
+    LEFT JOIN cities to_ci
+      ON se.to_city_id = to_ci.id
+
+    -- OLD LEGACY GEO SUPPORT
+    LEFT JOIN countries co
+      ON se.country_id = co.id
+
+    LEFT JOIN states st
+      ON se.state_id = st.id
+
+    LEFT JOIN districts di
+      ON se.district_id = di.id
+
+    LEFT JOIN cities ci
+      ON se.city_id = ci.id
+
     WHERE se.shipment_id IN (?)
+
     ORDER BY se.event_time ASC, se.id ASC
   `;
 
   db.query(sql, [shipmentIds], (err, rows) => {
-    if (err) return done(err);
+
+    if (err) {
+      return done(err);
+    }
+
     const grouped = rows.reduce((acc, row) => {
+
       const key = Number(row.shipment_id);
-      if (!acc[key]) acc[key] = [];
+
+      if (!acc[key]) {
+        acc[key] = [];
+      }
+
       acc[key].push(mapShipmentEventRow(row));
+
       return acc;
+
     }, {});
+
     return done(null, grouped);
   });
 };
@@ -604,15 +738,34 @@ exports.getShipmentEvents = (req, res) => {
 
 exports.createShipmentEvent = (req, res) => {
   const shipmentId = Number(req.params.id);
-  if (!shipmentId) return res.status(400).json({ message: "Invalid shipment id" });
+
+  if (!shipmentId) {
+    return res.status(400).json({
+      message: "Invalid shipment id"
+    });
+  }
 
   const {
     event_type,
     status,
+
+    // NEW GEO STRUCTURE
+    from_country_id = null,
+    from_state_id = null,
+    from_district_id = null,
+    from_city_id = null,
+
+    to_country_id = null,
+    to_state_id = null,
+    to_district_id = null,
+    to_city_id = null,
+
+    // OLD FIELDS (BACKWARD COMPATIBILITY)
     country_id = null,
     state_id = null,
     district_id = null,
     city_id = null,
+
     branch_name = null,
     tracking_label = null,
     note = null,
@@ -620,74 +773,306 @@ exports.createShipmentEvent = (req, res) => {
     created_by = null,
   } = req.body;
 
-  if (!event_time) return res.status(400).json({ message: "event_time required" });
+  if (!event_time) {
+    return res.status(400).json({
+      message: "event_time required"
+    });
+  }
+
   const normalizedStatus = normalizeStatusValue(status);
-  const resolvedType = event_type || STATUS_TO_EVENT_TYPE[normalizedStatus];
-  const resolvedStatus = normalizeStatusValue(normalizedStatus || EVENT_TYPE_TO_STATUS[event_type]);
-  if (!resolvedType) return res.status(400).json({ message: "event_type required or valid status mapping required" });
-  if (!resolvedStatus) return res.status(400).json({ message: "status required or valid event_type mapping required" });
+
+  const resolvedType =
+    event_type || STATUS_TO_EVENT_TYPE[normalizedStatus];
+
+  const resolvedStatus =
+    normalizeStatusValue(
+      normalizedStatus || EVENT_TYPE_TO_STATUS[event_type]
+    );
+
+  if (!resolvedType) {
+    return res.status(400).json({
+      message: "event_type required or valid status mapping required"
+    });
+  }
+
+  if (!resolvedStatus) {
+    return res.status(400).json({
+      message: "status required or valid event_type mapping required"
+    });
+  }
+
+  // BACKWARD COMPATIBILITY FALLBACKS
+  // If frontend still sends old fields,
+  // system will still work safely.
+
+  const finalFromCountryId =
+    from_country_id || country_id || null;
+
+  const finalFromStateId =
+    from_state_id || state_id || null;
+
+  const finalFromDistrictId =
+    from_district_id || district_id || null;
+
+  const finalFromCityId =
+    from_city_id || city_id || null;
+
+  const finalToCountryId =
+    to_country_id || country_id || null;
+
+  const finalToStateId =
+    to_state_id || state_id || null;
+
+  const finalToDistrictId =
+    to_district_id || district_id || null;
+
+  const finalToCityId =
+    to_city_id || city_id || null;
 
   const sql = `
     INSERT INTO shipment_events
-    (shipment_id, event_type, status, country_id, state_id, district_id, city_id, branch_name, tracking_label, note, event_time, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (
+      shipment_id,
+      event_type,
+      status,
+
+      from_country_id,
+      from_state_id,
+      from_district_id,
+      from_city_id,
+
+      to_country_id,
+      to_state_id,
+      to_district_id,
+      to_city_id,
+
+      branch_name,
+      tracking_label,
+      note,
+      event_time,
+      created_by
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
-  db.query(
-    sql,
-    [shipmentId, resolvedType, resolvedStatus, country_id, state_id, district_id, city_id, branch_name, tracking_label, note, event_time, created_by],
-    (err, result) => {
-      if (err) return sendError(res, err);
-      syncShipmentStatusFromEvents(shipmentId, (syncErr, statusAfterSync) => {
-        if (syncErr) return sendError(res, syncErr);
-        return res.json({ message: "Shipment event created", id: result.insertId, shipment_status: statusAfterSync });
-      });
+  const values = [
+    shipmentId,
+    resolvedType,
+    resolvedStatus,
+
+    finalFromCountryId,
+    finalFromStateId,
+    finalFromDistrictId,
+    finalFromCityId,
+
+    finalToCountryId,
+    finalToStateId,
+    finalToDistrictId,
+    finalToCityId,
+
+    branch_name,
+    tracking_label,
+    note,
+    event_time,
+    created_by
+  ];
+
+  db.query(sql, values, (err, result) => {
+
+    if (err) {
+      return sendError(res, err);
     }
-  );
+
+    syncShipmentStatusFromEvents(
+      shipmentId,
+      (syncErr, statusAfterSync) => {
+
+        if (syncErr) {
+          return sendError(res, syncErr);
+        }
+
+        return res.json({
+          message: "Shipment event created",
+          id: result.insertId,
+          shipment_status: statusAfterSync
+        });
+      }
+    );
+  });
 };
 
 exports.updateShipmentEvent = (req, res) => {
+
   const shipmentId = Number(req.params.id);
   const eventId = Number(req.params.eventId);
-  if (!shipmentId || !eventId) return res.status(400).json({ message: "Invalid shipment id/event id" });
+
+  if (!shipmentId || !eventId) {
+    return res.status(400).json({
+      message: "Invalid shipment id/event id"
+    });
+  }
 
   const {
     event_type,
     status,
+
+    // NEW GEO STRUCTURE
+    from_country_id = null,
+    from_state_id = null,
+    from_district_id = null,
+    from_city_id = null,
+
+    to_country_id = null,
+    to_state_id = null,
+    to_district_id = null,
+    to_city_id = null,
+
+    // OLD FIELDS (BACKWARD COMPATIBILITY)
     country_id = null,
     state_id = null,
     district_id = null,
     city_id = null,
+
     branch_name = null,
     tracking_label = null,
     note = null,
     event_time = null,
     created_by = null,
+
   } = req.body;
 
   const normalizedStatus = normalizeStatusValue(status);
-  const resolvedType = event_type || STATUS_TO_EVENT_TYPE[normalizedStatus];
-  const resolvedStatus = normalizeStatusValue(normalizedStatus || EVENT_TYPE_TO_STATUS[event_type]);
-  if (!resolvedType) return res.status(400).json({ message: "event_type required or valid status mapping required" });
-  if (!resolvedStatus) return res.status(400).json({ message: "status required or valid event_type mapping required" });
+
+  const resolvedType =
+    event_type || STATUS_TO_EVENT_TYPE[normalizedStatus];
+
+  const resolvedStatus =
+    normalizeStatusValue(
+      normalizedStatus || EVENT_TYPE_TO_STATUS[event_type]
+    );
+
+  if (!resolvedType) {
+    return res.status(400).json({
+      message: "event_type required or valid status mapping required"
+    });
+  }
+
+  if (!resolvedStatus) {
+    return res.status(400).json({
+      message: "status required or valid event_type mapping required"
+    });
+  }
+
+  // SAFE FALLBACK SUPPORT
+  // Old frontend still works
+
+  const finalFromCountryId =
+    from_country_id || country_id || null;
+
+  const finalFromStateId =
+    from_state_id || state_id || null;
+
+  const finalFromDistrictId =
+    from_district_id || district_id || null;
+
+  const finalFromCityId =
+    from_city_id || city_id || null;
+
+  const finalToCountryId =
+    to_country_id || country_id || null;
+
+  const finalToStateId =
+    to_state_id || state_id || null;
+
+  const finalToDistrictId =
+    to_district_id || district_id || null;
+
+  const finalToCityId =
+    to_city_id || city_id || null;
 
   const sql = `
     UPDATE shipment_events
-    SET event_type = ?, status = ?, country_id = ?, state_id = ?, district_id = ?, city_id = ?, branch_name = ?, tracking_label = ?, note = ?, event_time = COALESCE(?, event_time), created_by = ?
+
+    SET
+      event_type = ?,
+      status = ?,
+
+      from_country_id = ?,
+      from_state_id = ?,
+      from_district_id = ?,
+      from_city_id = ?,
+
+      to_country_id = ?,
+      to_state_id = ?,
+      to_district_id = ?,
+      to_city_id = ?,
+
+      branch_name = ?,
+      tracking_label = ?,
+      note = ?,
+
+      event_time = COALESCE(?, event_time),
+
+      created_by = ?
+
     WHERE id = ? AND shipment_id = ?
   `;
-  db.query(
-    sql,
-    [resolvedType, resolvedStatus, country_id, state_id, district_id, city_id, branch_name, tracking_label, note, event_time, created_by, eventId, shipmentId],
-    (err, result) => {
-      if (err) return sendError(res, err);
-      if (!result.affectedRows) return res.status(404).json({ message: "Shipment event not found" });
-      syncShipmentStatusFromEvents(shipmentId, (syncErr, statusAfterSync) => {
-        if (syncErr) return sendError(res, syncErr);
-        return res.json({ message: "Shipment event updated", id: eventId, shipment_status: statusAfterSync });
+
+  const values = [
+
+    resolvedType,
+    resolvedStatus,
+
+    finalFromCountryId,
+    finalFromStateId,
+    finalFromDistrictId,
+    finalFromCityId,
+
+    finalToCountryId,
+    finalToStateId,
+    finalToDistrictId,
+    finalToCityId,
+
+    branch_name,
+    tracking_label,
+    note,
+
+    event_time,
+
+    created_by,
+
+    eventId,
+    shipmentId
+  ];
+
+  db.query(sql, values, (err, result) => {
+
+    if (err) {
+      return sendError(res, err);
+    }
+
+    if (!result.affectedRows) {
+      return res.status(404).json({
+        message: "Shipment event not found"
       });
     }
-  );
+
+    syncShipmentStatusFromEvents(
+      shipmentId,
+      (syncErr, statusAfterSync) => {
+
+        if (syncErr) {
+          return sendError(res, syncErr);
+        }
+
+        return res.json({
+          message: "Shipment event updated",
+          id: eventId,
+          shipment_status: statusAfterSync
+        });
+      }
+    );
+  });
 };
 
 exports.deleteShipmentEvent = (req, res) => {
