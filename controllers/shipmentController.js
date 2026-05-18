@@ -64,6 +64,8 @@ const EVENT_TYPE_TO_STATUS = {
   delivered: "Delivered",
   returned: "Returned",
   reschedule: "Reschedule Requested",
+  missed: "Missed",
+  refuse: "Refuse"
 };
 
 const STATUS_TO_EVENT_TYPE = Object.entries(EVENT_TYPE_TO_STATUS).reduce((acc, [k, v]) => {
@@ -88,6 +90,8 @@ const normalizeStatusValue = (value) => {
     "delivered in warehouse": "Delivered in Warehouse",
     returned: "Returned",
     "reschedule requested": "Reschedule Requested",
+    missed: "Missed",
+refuse: "Refuse",
   };
   return map[raw.toLowerCase()] || raw;
 };
@@ -177,6 +181,23 @@ const toEventMeta = (row) => {
       out_for_delivery_location_name: row.branch_name || ""
     };
   }
+  if (row.event_type === "missed") {
+  return {
+    ...base,
+    missed_geo: toGeo,
+    missed_location_name: row.branch_name || "",
+    reason: row.note || ""
+  };
+}
+
+if (row.event_type === "refuse") {
+  return {
+    ...base,
+    refuse_geo: toGeo,
+    refuse_location_name: row.branch_name || "",
+    reason: row.note || ""
+  };
+}
 
   return base;
 };
@@ -392,7 +413,21 @@ const STATUS_FLAG_UPDATES = {
   warehouse_reached_flag: 1,
   out_for_delivery_flag: 1
 },
+"Missed": {
+  product_placed_flag: 1,
+  pickup_completed_flag: 1,
+  in_transit_flag: 1,
+  warehouse_reached_flag: 1,
+  out_for_delivery_flag: 1
+},
 
+"Refuse": {
+  product_placed_flag: 1,
+  pickup_completed_flag: 1,
+  in_transit_flag: 1,
+  warehouse_reached_flag: 1,
+  out_for_delivery_flag: 1
+},
   "Delivered": {
   product_placed_flag: 1,
   pickup_completed_flag: 1,
