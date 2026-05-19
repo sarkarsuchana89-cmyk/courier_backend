@@ -693,6 +693,7 @@ exports.getAllShipments = (req, res) => {
     ORDER BY s.id DESC
   `;
 
+  
   db.query(sql, (err, result) => {
     if (err) return sendError(res, err);
     const shipmentIds = result.map((row) => Number(row.id)).filter(Boolean);
