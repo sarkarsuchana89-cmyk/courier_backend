@@ -645,7 +645,7 @@ exports.getAllShipments = (req, res) => {
     SELECT 
       s.*,
 
-      -- sender
+     -- sender
       sender.name AS sender_name,
       sender.phone AS sender_phone,
       sender.whatsapp AS sender_whatsapp,
@@ -657,7 +657,7 @@ exports.getAllShipments = (req, res) => {
       sender.district_id AS sender_district_id,
       sender.city_id AS sender_city_id,
       sender.pincode_id AS sender_pincode_id,
-      
+      sender_city.name AS sender_city,
 
       -- receiver
       receiver.name AS receiver_name,
@@ -671,7 +671,8 @@ exports.getAllShipments = (req, res) => {
       receiver.state_id AS receiver_state_id,
       receiver.district_id AS receiver_district_id,
       receiver.city_id AS receiver_city_id,
-      receiver.pincode_id AS receiver_pincode_id
+      receiver.pincode_id AS receiver_pincode_id,
+      receiver_city.name AS receiver_city
 
     FROM shipments s
 
@@ -680,6 +681,14 @@ exports.getAllShipments = (req, res) => {
 
     LEFT JOIN shipment_addresses receiver 
       ON s.id = receiver.shipment_id AND receiver.type = 'receiver'
+
+    -- sender city
+    LEFT JOIN cities sender_city
+      ON sender.city_id = sender_city.id
+
+    -- receiver city
+    LEFT JOIN cities receiver_city
+      ON receiver.city_id = receiver_city.id
 
     ORDER BY s.id DESC
   `;
