@@ -553,7 +553,7 @@ exports.createShipment = (req, res) => {
 
         const addressSql = `
           INSERT INTO shipment_addresses
-(shipment_id, type, name, reference_name, address, pincode_id, city_id, district_id, state_id, country_id, phone, whatsapp, email)
+(shipment_id, type, person_type ,name, reference_name, address, pincode_id, city_id, district_id, state_id, country_id, phone, whatsapp, email)
 VALUES ?
         `;
 
@@ -561,6 +561,7 @@ VALUES ?
   [
     shipmentId,
     "sender",
+    sender.person_type || sender.sender_type || "Person",
     sender.name,
     null, // sender no ref (optional)
     sender.address,
@@ -576,6 +577,7 @@ VALUES ?
   [
     shipmentId,
     "receiver",
+    receiver.person_type || receiver.receiver_type || "Person",
     receiver.name,
     receiver.reference_name || null, // ✅ THIS IS YOUR FIELD
     receiver.address,
@@ -649,6 +651,7 @@ exports.getAllShipments = (req, res) => {
 
      -- sender
       sender.name AS sender_name,
+      sender.person_type AS sender_type,
       sender.phone AS sender_phone,
       sender.whatsapp AS sender_whatsapp,
       sender.whatsapp AS sender_whatsapp_no,
@@ -663,6 +666,7 @@ exports.getAllShipments = (req, res) => {
 
       -- receiver
       receiver.name AS receiver_name,
+      receiver.person_type AS receiver_type,
       receiver.reference_name AS receiver_reference_name,
       receiver.phone AS receiver_phone,
       receiver.whatsapp AS receiver_whatsapp,
@@ -1218,7 +1222,8 @@ exports.updateShipment = (req, res) => {
           const updateAddress = (type, addressData, done) => {
             const addressSql = `
               UPDATE shipment_addresses
-              SET name = ?,
+              SET  person_type = ?,
+                   name = ?,
                   reference_name = ?,
                   address = ?,
                   pincode_id = ?,
@@ -1233,6 +1238,7 @@ exports.updateShipment = (req, res) => {
             `;
 
             const params = [
+              addressData?.person_type || "Person",
               addressData?.name || null,
               addressData?.reference_name || null,
               addressData?.address || null,
@@ -1255,8 +1261,8 @@ exports.updateShipment = (req, res) => {
 
               const insertAddressSql = `
                 INSERT INTO shipment_addresses
-                (shipment_id, type, name, reference_name, address, pincode_id, city_id, district_id, state_id, country_id, phone, whatsapp, email)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (shipment_id, type,person_type, name, reference_name, address, pincode_id, city_id, district_id, state_id, country_id, phone, whatsapp, email)
+                VALUES (?, ?,? ,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `;
 
               conn.query(
@@ -1264,6 +1270,7 @@ exports.updateShipment = (req, res) => {
                 [
                   id,
                   type,
+                   addressData?.person_type || "Person",
                   addressData?.name || null,
                   addressData?.reference_name || null,
                   addressData?.address || null,
