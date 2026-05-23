@@ -493,6 +493,7 @@ exports.createShipment = (req, res) => {
     origin_city_id,
     destination_city_id,
     shipment_date,
+    expected_delivery_date,
     pcs,
     weight,
     mode,
@@ -519,10 +520,10 @@ exports.createShipment = (req, res) => {
 
         const shipmentSql = `
           INSERT INTO shipments
-          (awb_number, origin_city_id, destination_city_id, shipment_date,
+          (awb_number, origin_city_id, destination_city_id, shipment_date, expected_delivery_date,
            pcs, weight, mode, contents, declared_value,
            remarks, return_details, cust_ref_no, sl_no,created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?)
         `;
 
 
@@ -534,6 +535,7 @@ exports.createShipment = (req, res) => {
           origin_city_id,
           destination_city_id,
           shipment_date,
+          expected_delivery_date,
           pcs,
           weight,
           mode,
@@ -1149,7 +1151,7 @@ exports.updateShipment = (req, res) => {
   const {
     origin_city_id,
     destination_city_id,
-    shipment_date,    pcs,
+    shipment_date,expected_delivery_date,    pcs,
     weight,
     mode,
     contents,
@@ -1176,7 +1178,7 @@ exports.updateShipment = (req, res) => {
         UPDATE shipments
         SET origin_city_id = ?,
             destination_city_id = ?,
-            shipment_date = ?,            pcs = ?,
+            shipment_date = ?,expected_delivery_date = ?,            pcs = ?,
             weight = ?,
             mode = ?,
             contents = ?,
@@ -1193,7 +1195,7 @@ exports.updateShipment = (req, res) => {
         [
           origin_city_id,
           destination_city_id,
-          shipment_date,          pcs,
+          shipment_date,    expected_delivery_date,      pcs,
           weight,
           mode,
           contents,
