@@ -144,8 +144,11 @@ const toEventMeta = (row) => {
 
   const base = {
     tracking_label: row.tracking_label || "",
-    note: row.note || "",
-    user_name: row.created_by || "",
+  note: row.note || "",
+  user_name: row.created_by || "",
+
+  another_person: row.another_person || null,
+  relation_name: row.relation_name || null,
   };
 
   if (row.event_type === "picked") {
@@ -816,7 +819,9 @@ exports.createShipmentEvent = (req, res) => {
     state_id = null,
     district_id = null,
     city_id = null,
-
+    another_person = null,
+relation_name = null,
+receiver_type = null,
     branch_name = null,
     tracking_label = null,
     note = null,
@@ -900,10 +905,12 @@ exports.createShipmentEvent = (req, res) => {
       branch_name,
       tracking_label,
       note,
+      another_person,
+      relation_name,
       event_time,
       created_by
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   const values = [
@@ -924,32 +931,68 @@ exports.createShipmentEvent = (req, res) => {
     branch_name,
     tracking_label,
     note,
+    receiver_type === "Another Person"
+    ? another_person
+    : null,
+
+    relation_name || "Self",
     event_time,
     created_by
   ];
 
-  db.query(sql, values, (err, result) => {
+  const receiverSql = `
+  UPDATE shipment_addresses
+  SET
+    another_person = ?,
+    relation_name = ?
+  WHERE shipment_id = ?
+  AND type = 'receiver'
+`;
 
-    if (err) {
-      return sendError(res, err);
+db.query(
+  receiverSql,
+  [
+    receiver_type === "Another Person"
+      ? another_person
+      : null,
+
+    relation_name || "Self",
+
+    shipmentId
+  ],
+  (receiverErr) => {
+
+    if (receiverErr) {
+      return sendError(res, receiverErr);
     }
 
-    syncShipmentStatusFromEvents(
-      shipmentId,
-      (syncErr, statusAfterSync) => {
+    db.query(sql, values, (err, result) => {
 
-        if (syncErr) {
-          return sendError(res, syncErr);
-        }
-
-        return res.json({
-          message: "Shipment event created",
-          id: result.insertId,
-          shipment_status: statusAfterSync
-        });
+      if (err) {
+        return sendError(res, err);
       }
-    );
-  });
+
+      syncShipmentStatusFromEvents(
+        shipmentId,
+        (syncErr, statusAfterSync) => {
+
+          if (syncErr) {
+            return sendError(res, syncErr);
+          }
+
+          return res.json({
+            message: "Shipment event created",
+            id: result.insertId,
+            shipment_status: statusAfterSync
+          });
+
+        }
+      );
+
+    });
+
+  }
+);
 };
 
 exports.updateShipmentEvent = (req, res) => {
@@ -1087,7 +1130,6 @@ exports.updateShipmentEvent = (req, res) => {
     branch_name,
     tracking_label,
     note,
-
     event_time,
 
     created_by,
@@ -1511,7 +1553,7 @@ exports.createRescheduleRequest = (req, res) => {
               note,
               event_time
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?,?)
           `;
 
           const note =
