@@ -90,6 +90,7 @@ const createWarehouse = (req, res) => {
         try {
             const {
                 warehouse_name,
+                warehouse_code,
                 contact_person_name,
                 address,
                 country_id,
@@ -104,7 +105,14 @@ const createWarehouse = (req, res) => {
                 email,
                 status
             } = req.body;
+if (!warehouse_code || !warehouse_code.trim()) {
+    return res.status(400).json({
+        success: false,
+        message: "Warehouse code is required"
+    });
+}
 
+const normalizedWarehouseCode = warehouse_code.trim().toUpperCase();
             const resolvedPincodeId = await resolvePincodeId({
                 pincode_id,
                 pincode,
@@ -117,6 +125,7 @@ const createWarehouse = (req, res) => {
             const sql = `
                 INSERT INTO warehouses (
                     warehouse_name,
+                    warehouse_code,
                     contact_person_name,
                     address,
                     country_id,
@@ -129,11 +138,12 @@ const createWarehouse = (req, res) => {
                     email,
                     status
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (? ,? , ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
 
             const values = [
                 warehouse_name,
+                normalizedWarehouseCode,
                 contact_person_name,
                 address,
                 country_id,
@@ -155,6 +165,12 @@ const createWarehouse = (req, res) => {
                 warehouse_id: result.insertId
             });
         } catch (error) {
+            if (error.code === "ER_DUP_ENTRY") {
+    return res.status(400).json({
+        success: false,
+        message: "Warehouse code already exists"
+    });
+}
             console.error("Warehouse Insert Error:", error);
 
             return res.status(500).json({
@@ -174,6 +190,7 @@ const getWarehouses = (req, res) => {
         SELECT
             w.warehouse_id,
             w.warehouse_name,
+            w.warehouse_code,
             w.contact_person_name,
             w.address,
 
@@ -281,6 +298,7 @@ const updateWarehouse = (req, res) => {
 
             const {
                 warehouse_name,
+                warehouse_code,
                 contact_person_name,
                 address,
                 country_id,
@@ -295,7 +313,14 @@ const updateWarehouse = (req, res) => {
                 email,
                 status
             } = req.body;
-
+      
+ if (!warehouse_code || !warehouse_code.trim()) {
+    return res.status(400).json({
+        success: false,
+        message: "Warehouse code is required"
+    });
+}
+ const normalizedWarehouseCode = warehouse_code.trim().toUpperCase();
             const resolvedPincodeId = await resolvePincodeId({
                 pincode_id,
                 pincode,
@@ -309,6 +334,7 @@ const updateWarehouse = (req, res) => {
                 UPDATE warehouses
                 SET
                     warehouse_name = ?,
+                    warehouse_code = ?,
                     contact_person_name = ?,
                     address = ?,
                     country_id = ?,
@@ -325,6 +351,7 @@ const updateWarehouse = (req, res) => {
 
             const values = [
                 warehouse_name,
+                normalizedWarehouseCode,
                 contact_person_name,
                 address,
                 country_id,
@@ -346,6 +373,12 @@ const updateWarehouse = (req, res) => {
                 message: "Warehouse updated successfully"
             });
         } catch (error) {
+            if (error.code === "ER_DUP_ENTRY") {
+    return res.status(400).json({
+        success: false,
+        message: "Warehouse code already exists"
+    });
+}
             console.error("Update Warehouse Error:", error);
 
             return res.status(500).json({
