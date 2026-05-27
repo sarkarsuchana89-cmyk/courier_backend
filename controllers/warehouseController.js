@@ -1,76 +1,169 @@
 const db = require("../config/db");
 
+function runQuery(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.query(sql, params, (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+        });
+    });
+}
+
+async function resolvePincodeId({
+    pincode_id,
+    pincode,
+    location,
+    city_id,
+    state_id,
+    district_id
+}) {
+    if (pincode_id) return pincode_id;
+
+    const normalizedPincode = String(pincode || "").trim();
+    if (!normalizedPincode) return null;
+
+    const existing = await runQuery(
+        `
+            SELECT id
+            FROM pincodes
+            WHERE pincode = ?
+              AND city = ?
+              AND state_id = ?
+              AND district_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+        `,
+        [normalizedPincode, city_id || null, state_id || null, district_id || null]
+    );
+
+    if (existing.length > 0) {
+        const existingId = existing[0]?.id;
+        const normalizedLocation = String(location || "").trim();
+
+        if (normalizedLocation) {
+            await runQuery(
+                `
+                    UPDATE pincodes
+                    SET location = CASE
+                        WHEN location IS NULL OR TRIM(location) = '' THEN ?
+                        ELSE location
+                    END
+                    WHERE id = ?
+                `,
+                [normalizedLocation, existingId]
+            );
+        }
+
+        return existingId;
+    }
+
+    const insertResult = await runQuery(
+        `
+            INSERT INTO pincodes (
+                pincode,
+                location,
+                city,
+                state_id,
+                district_id,
+                status
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        [
+            normalizedPincode,
+            String(location || "").trim(),
+            city_id || null,
+            state_id || null,
+            district_id || null,
+            "Active"
+        ]
+    );
+
+    return insertResult.insertId;
+}
+
 
 // ================= CREATE WAREHOUSE =================
 const createWarehouse = (req, res) => {
 
-    const {
-        warehouse_name,
-        contact_person_name,
-        address,
-        country_id,
-        state_id,
-        district_id,
-        city_id,
-        pincode_id,
-        phone_number,
-        whatsapp_number,
-        email,
-        status
-    } = req.body;
+    (async () => {
+        try {
+            const {
+                warehouse_name,
+                contact_person_name,
+                address,
+                country_id,
+                state_id,
+                district_id,
+                city_id,
+                pincode_id,
+                pincode,
+                location,
+                phone_number,
+                whatsapp_number,
+                email,
+                status
+            } = req.body;
 
-    const sql = `
-        INSERT INTO warehouses (
-            warehouse_name,
-            contact_person_name,
-            address,
-            country_id,
-            state_id,
-            district_id,
-            city_id,
-            pincode_id,
-            phone_number,
-            whatsapp_number,
-            email,
-            status
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
+            const resolvedPincodeId = await resolvePincodeId({
+                pincode_id,
+                pincode,
+                location,
+                city_id,
+                state_id,
+                district_id
+            });
 
-    const values = [
-        warehouse_name,
-        contact_person_name,
-        address,
-        country_id,
-        state_id,
-        district_id,
-        city_id,
-        pincode_id,
-        phone_number,
-        whatsapp_number,
-        email,
-        status || "Active"
-    ];
+            const sql = `
+                INSERT INTO warehouses (
+                    warehouse_name,
+                    contact_person_name,
+                    address,
+                    country_id,
+                    state_id,
+                    district_id,
+                    city_id,
+                    pincode_id,
+                    phone_number,
+                    whatsapp_number,
+                    email,
+                    status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
 
-    db.query(sql, values, (error, result) => {
+            const values = [
+                warehouse_name,
+                contact_person_name,
+                address,
+                country_id,
+                state_id,
+                district_id,
+                city_id,
+                resolvedPincodeId,
+                phone_number,
+                whatsapp_number,
+                email,
+                status || "Active"
+            ];
 
-        if (error) {
+            const result = await runQuery(sql, values);
+
+            res.status(201).json({
+                success: true,
+                message: "Warehouse created successfully",
+                warehouse_id: result.insertId
+            });
+        } catch (error) {
             console.error("Warehouse Insert Error:", error);
 
             return res.status(500).json({
                 success: false,
-                message: "Server Error",
+                message: error.message || "Server Error",
                 error: error.message
             });
         }
-
-        res.status(201).json({
-            success: true,
-            message: "Warehouse created successfully",
-            warehouse_id: result.insertId
-        });
-
-    });
+    })();
 };
 
 
@@ -182,75 +275,86 @@ const getWarehouseById = (req, res) => {
 // ================= UPDATE WAREHOUSE =================
 const updateWarehouse = (req, res) => {
 
-    const { id } = req.params;
+    (async () => {
+        try {
+            const { id } = req.params;
 
-    const {
-        warehouse_name,
-        contact_person_name,
-        address,
-        country_id,
-        state_id,
-        district_id,
-        city_id,
-        pincode_id,
-        phone_number,
-        whatsapp_number,
-        email,
-        status
-    } = req.body;
+            const {
+                warehouse_name,
+                contact_person_name,
+                address,
+                country_id,
+                state_id,
+                district_id,
+                city_id,
+                pincode_id,
+                pincode,
+                location,
+                phone_number,
+                whatsapp_number,
+                email,
+                status
+            } = req.body;
 
-    const sql = `
-        UPDATE warehouses
-        SET
-            warehouse_name = ?,
-            contact_person_name = ?,
-            address = ?,
-            country_id = ?,
-            state_id = ?,
-            district_id = ?,
-            city_id = ?,
-            pincode_id = ?,
-            phone_number = ?,
-            whatsapp_number = ?,
-            email = ?,
-            status = ?
-        WHERE warehouse_id = ?
-    `;
+            const resolvedPincodeId = await resolvePincodeId({
+                pincode_id,
+                pincode,
+                location,
+                city_id,
+                state_id,
+                district_id
+            });
 
-    const values = [
-        warehouse_name,
-        contact_person_name,
-        address,
-        country_id,
-        state_id,
-        district_id,
-        city_id,
-        pincode_id,
-        phone_number,
-        whatsapp_number,
-        email,
-        status,
-        id
-    ];
+            const sql = `
+                UPDATE warehouses
+                SET
+                    warehouse_name = ?,
+                    contact_person_name = ?,
+                    address = ?,
+                    country_id = ?,
+                    state_id = ?,
+                    district_id = ?,
+                    city_id = ?,
+                    pincode_id = ?,
+                    phone_number = ?,
+                    whatsapp_number = ?,
+                    email = ?,
+                    status = ?
+                WHERE warehouse_id = ?
+            `;
 
-    db.query(sql, values, (error, result) => {
+            const values = [
+                warehouse_name,
+                contact_person_name,
+                address,
+                country_id,
+                state_id,
+                district_id,
+                city_id,
+                resolvedPincodeId,
+                phone_number,
+                whatsapp_number,
+                email,
+                status || "Active",
+                id
+            ];
 
-        if (error) {
+            await runQuery(sql, values);
+
+            res.status(200).json({
+                success: true,
+                message: "Warehouse updated successfully"
+            });
+        } catch (error) {
             console.error("Update Warehouse Error:", error);
 
             return res.status(500).json({
                 success: false,
-                message: "Server Error",
+                message: error.message || "Server Error",
                 error: error.message
             });
         }
-
-        res.status(200).json({
-            success: true,
-            message: "Warehouse updated successfully"
-        });
-
-    });
+    })();
 };
 
 
