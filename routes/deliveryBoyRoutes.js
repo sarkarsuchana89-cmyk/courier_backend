@@ -26,7 +26,7 @@ router.get("/", getDeliveryBoys);
 router.get("/:id", getDeliveryBoyById);
 router.post("/", deliveryBoyDocFields, createDeliveryBoy);
 router.put("/:id", deliveryBoyDocFields, updateDeliveryBoy);
-// router.delete("/:id", deleteDeliveryBoy);
+router.delete("/:id", deleteDeliveryBoy);
 
 module.exports = router;
 
