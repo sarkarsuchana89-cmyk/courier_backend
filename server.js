@@ -9,7 +9,7 @@ const pincodeRoutes = require("./routes/pincodeRoutes");
 const countryRoutes = require("./routes/countryRoutes");
 const shipmentRoutes = require("./routes/shipmentRoutes");
 const deliveryBoyRoutes = require("./routes/deliveryBoyRoutes");
-const warehouseRoutes = require("./routes/warehouseroutes");
+const warehouseRoutes = require("./routes/warehouseRoutes");
 
 const otpRoutes = require("./routes/otpRoutes");
 
@@ -17,6 +17,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: "8mb" }));
+app.use("/uploads", express.static("uploads"));
 app.use("/api/shipments", shipmentRoutes);
 app.use("/api/states", stateRoutes);
 app.use("/api/districts", districtRoutes);

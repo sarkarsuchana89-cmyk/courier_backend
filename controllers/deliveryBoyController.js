@@ -1,33 +1,5 @@
-﻿const db = require("../config/db");
-
-const maxDocumentSize = 1024 * 1024;
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
-const createTableSql = `
-  CREATE TABLE IF NOT EXISTS delivery_boys (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(150) NOT NULL,
-    full_address TEXT NOT NULL,
-    phone_number VARCHAR(30) NOT NULL,
-    whatsapp VARCHAR(30) NOT NULL,
-    email VARCHAR(150) NOT NULL,
-    adhar_name VARCHAR(255) NULL,
-    adhar_size INT NULL,
-    adhar_type VARCHAR(120) NULL,
-    adhar_url LONGTEXT NULL,
-    pan_name VARCHAR(255) NULL,
-    pan_size INT NULL,
-    pan_type VARCHAR(120) NULL,
-    pan_url LONGTEXT NULL,
-    passport_photo_name VARCHAR(255) NULL,
-    passport_photo_size INT NULL,
-    passport_photo_type VARCHAR(120) NULL,
-    passport_photo_url LONGTEXT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'Active',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-  )
-`;
+const path = require("path");
+const db = require("../config/db");
 
 const sendDbError = (res, err, fallbackMessage) => {
   console.error("[deliveryBoyController]", err);
@@ -37,154 +9,418 @@ const sendDbError = (res, err, fallbackMessage) => {
   });
 };
 
-const ensureTable = (res, callback) => {
-  db.query(createTableSql, (err) => {
-    if (err) return sendDbError(res, err, "Failed to prepare delivery boy table");
-    callback();
-  });
+const toDate = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
 };
 
-const documentFromBody = (body, key) => {
-  const document = body?.[key] || {};
-  return {
-    name: document.name || null,
-    size: document.size || null,
-    type: document.type || null,
-    url: document.url || null,
-  };
-};
-
-const normalizeRow = (row) => ({
-  id: row.id,
-  name: row.name || "",
-  fullAddress: row.full_address || "",
-  phoneNumber: row.phone_number || "",
-  whatsapp: row.whatsapp || "",
-  email: row.email || "",
-  status: row.status || "Active",
-  adhar: row.adhar_url ? {
-    name: row.adhar_name,
-    size: row.adhar_size,
-    type: row.adhar_type,
-    url: row.adhar_url,
-  } : null,
-  pan: row.pan_url ? {
-    name: row.pan_name,
-    size: row.pan_size,
-    type: row.pan_type,
-    url: row.pan_url,
-  } : null,
-  passportPhoto: row.passport_photo_url ? {
-    name: row.passport_photo_name,
-    size: row.passport_photo_size,
-    type: row.passport_photo_type,
-    url: row.passport_photo_url,
-  } : null,
-  created_at: row.created_at,
-  updated_at: row.updated_at,
-});
-
-const validateDeliveryBoy = (body) => {
-  if (!String(body.name || "").trim()) return "Name is required.";
-  if (!String(body.fullAddress || "").trim()) return "Full address is required.";
-  if (!String(body.phoneNumber || "").trim()) return "Phone number is required.";
-  if (!String(body.whatsapp || "").trim()) return "Whatsapp number is required.";
-  if (!String(body.email || "").trim()) return "Email is required.";
-  if (!emailPattern.test(String(body.email || "").trim())) return "Please enter a valid email address.";
-
-  for (const key of ["adhar", "pan", "passportPhoto"]) {
-    const size = Number(body?.[key]?.size || 0);
-    if (size > maxDocumentSize) return "Document size must be 1 MB or less.";
+const pick = (...values) => {
+  for (const v of values) {
+    if (v === null || v === undefined) continue;
+    if (typeof v === "string" && !v.trim()) continue;
+    return v;
   }
-
   return null;
 };
 
-const valuesFromBody = (body) => {
-  const adhar = documentFromBody(body, "adhar");
-  const pan = documentFromBody(body, "pan");
-  const passportPhoto = documentFromBody(body, "passportPhoto");
+const parseObject = (value) => {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+};
 
-  return [
-    String(body.name || "").trim(),
-    String(body.fullAddress || "").trim(),
-    String(body.phoneNumber || "").trim(),
-    String(body.whatsapp || "").trim(),
-    String(body.email || "").trim(),
-    adhar.name,
-    adhar.size,
-    adhar.type,
-    adhar.url,
-    pan.name,
-    pan.size,
-    pan.type,
-    pan.url,
-    passportPhoto.name,
-    passportPhoto.size,
-    passportPhoto.type,
-    passportPhoto.url,
-    body.status || "Active",
+const firstWarehouseId = (raw) => {
+  if (Array.isArray(raw)) return Number(raw[0]) || null;
+  if (typeof raw === "string") {
+    try {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return Number(arr[0]) || null;
+    } catch (e) {
+      return Number(raw) || null;
+    }
+  }
+  return Number(raw) || null;
+};
+
+const normalizeStatus = (status) => (String(status || "").trim() === "Inactive" ? "Inactive" : "Active");
+const normalizeSex = (sex) => {
+  const val = String(sex || "").trim();
+  return ["Male", "Female", "Other"].includes(val) ? val : "Male";
+};
+
+const normalizeVehicleSpec = (value) => {
+  const val = String(value || "").trim();
+  const allowed = ["Personal", "Commercial", "Electric", "Self Driven", "Normal Car"];
+  return allowed.includes(val) ? val : "Personal";
+};
+
+const normalizeLicenseType = (value) => {
+  const val = String(value || "").trim();
+  const allowed = [
+    "Permanent Driving License",
+    "Commercial Driving License",
+    "International Driving License",
+    "Learners License",
   ];
+  return allowed.includes(val) ? val : null;
+};
+
+const fileUrl = (req, file) => {
+  if (!file) return null;
+  const base = `${req.protocol}://${req.get("host")}`;
+  return `${base}/uploads/${file.filename}`;
+};
+
+const fileNameOnly = (value) => {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  return path.basename(str);
+};
+
+const readPayload = (req) => {
+  const body = req.body || {};
+  const files = req.files || {};
+  const presentAddressObj = parseObject(body.presentAddress);
+  const currentAddressObj = parseObject(body.currentAddress);
+
+  const adharFront = pick(
+    fileNameOnly(files.adharcard_front?.[0]?.filename),
+    fileNameOnly(files.adhar_front?.[0]?.filename),
+    body.adharcard_front,
+    body.adhar_front,
+    body.aadhaar_front,
+    body.aadharFront?.name,
+    body.aadharFront?.url
+  );
+  const adharBack = pick(
+    fileNameOnly(files.adharcard_back?.[0]?.filename),
+    fileNameOnly(files.adhar_back?.[0]?.filename),
+    body.adharcard_back,
+    body.adhar_back,
+    body.aadhaar_back,
+    body.aadharBack?.name,
+    body.aadharBack?.url
+  );
+  const pancard = pick(
+    fileNameOnly(files.pancard?.[0]?.filename),
+    fileNameOnly(files.pan_front?.[0]?.filename),
+    body.pancard,
+    body.pan_front,
+    body.panFront?.name,
+    body.panFront?.url,
+    body.panBack?.name,
+    body.panBack?.url
+  );
+  const photo = pick(
+    fileNameOnly(files.photo?.[0]?.filename),
+    fileNameOnly(files.passport_photo?.[0]?.filename),
+    body.photo,
+    body.passport_photo,
+    body.passportPhoto?.name,
+    body.passportPhoto?.url
+  );
+
+  return {
+    name: String(pick(body.name, body.delivery_boy_name) || "").trim(),
+    code: pick(body.code),
+    phone_number: String(pick(body.phone_number, body.phoneNumber) || "").trim(),
+    whatsapp_number: String(pick(body.whatsapp_number, body.whatsapp, body.whatsappNumber) || "").trim() || null,
+    email: String(pick(body.email) || "").trim() || null,
+    sex: normalizeSex(pick(body.sex, body.gender)),
+    present_address: String(pick(body.present_address, presentAddressObj.address, body.fullAddress) || "").trim(),
+    permanent_address: String(pick(body.permanent_address, currentAddressObj.address, body.current_address) || "").trim() || null,
+    warehouse_id: Number(pick(body.warehouse_id, body.warehouseId, firstWarehouseId(body.warehouseIds))) || null,
+    country_id: Number(pick(body.country_id, body.countryId)) || null,
+    state_id: Number(pick(body.state_id, body.stateId)) || null,
+    district_id: Number(pick(body.district_id, body.districtId)) || null,
+    city_id: Number(pick(body.city_id, body.cityId)) || null,
+    pincode_id: Number(pick(body.pincode_id, body.pincodeId)) || null,
+    adharcard_number: String(pick(body.adharcard_number, body.adhar_number, body.aadhaar_number, body.aadharNumber) || "").trim() || null,
+    adharcard_front: adharFront,
+    adharcard_back: adharBack,
+    pancard_number: String(pick(body.pancard_number, body.pan_number, body.panNumber) || "").trim() || null,
+    pancard,
+    photo,
+    bank_name: String(pick(body.bank_name, body.bankName) || "").trim() || null,
+    ifsc_code: String(pick(body.ifsc_code, body.ifscCode) || "").trim() || null,
+    account_number: String(pick(body.account_number, body.ac_number, body.accountNumber) || "").trim() || null,
+    vehicle_specification: normalizeVehicleSpec(
+      pick(body.vehicle_specification, body.vehicle_classification, body.vehicle_drive_type)
+    ),
+    vehicle_reg_plate_number: String(
+      pick(body.vehicle_reg_plate_number, body.vehicle_registration_number, body.vehicleNumber, body.vehicleRegistrationNumber)
+    || "").trim() || null,
+    vehicle_type: normalizeVehicleSpec(
+      pick(body.vehicle_type, body.vehicleType, body.vehicleSpecificationClassification, body.vehicle_classification)
+    ),
+    license_type: normalizeLicenseType(pick(body.license_type, body.licenseType, body.license_type_name)),
+    license_number: String(pick(body.license_number, body.licenseNumber) || "").trim() || null,
+    date_of_issue: toDate(pick(body.date_of_issue, body.dateOfIssue, body.licenseIssueDate)),
+    valid_till: toDate(pick(body.valid_till, body.validTill, body.licenseValidTill)),
+    status: normalizeStatus(pick(body.status)),
+    created_at: new Date(),
+    updated_at: new Date(),
+    present_state_name: String(pick(body.present_state, presentAddressObj.state) || "").trim() || null,
+    present_district_name: String(pick(body.present_district, presentAddressObj.district) || "").trim() || null,
+    present_city_name: String(pick(body.present_city, presentAddressObj.city) || "").trim() || null,
+    present_country_name: String(pick(body.present_country, presentAddressObj.country) || "").trim() || null,
+  };
+};
+
+const runQuery = (sql, values = []) =>
+  new Promise((resolve, reject) => {
+    db.query(sql, values, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows);
+    });
+  });
+
+const resolveIdsFromWarehouse = async (payload) => {
+  if (!payload.warehouse_id) return;
+  const rows = await runQuery(
+    "SELECT country_id, state_id, district_id, city_id, pincode_id FROM warehouses WHERE warehouse_id = ? LIMIT 1",
+    [payload.warehouse_id]
+  );
+  const wh = rows?.[0] || {};
+  payload.country_id = payload.country_id || wh.country_id || null;
+  payload.state_id = payload.state_id || wh.state_id || null;
+  payload.district_id = payload.district_id || wh.district_id || null;
+  payload.city_id = payload.city_id || wh.city_id || null;
+  payload.pincode_id = payload.pincode_id || wh.pincode_id || null;
+};
+
+const validatePayload = (payload) => {
+  if (!payload.name) return "Name is required.";
+  if (!payload.phone_number) return "Phone number is required.";
+  if (!payload.present_address) return "Present address is required.";
+  if (!payload.warehouse_id) return "Warehouse is required.";
+  if (!payload.country_id || !payload.state_id || !payload.district_id || !payload.city_id || !payload.pincode_id) {
+    return "Country, state, district, city and pincode are required.";
+  }
+  return null;
+};
+
+const normalizeRow = (row, req) => {
+  const base = `${req.protocol}://${req.get("host")}/uploads/`;
+  return {
+    delivery_boy_id: row.delivery_boy_id,
+    id: row.delivery_boy_id,
+    name: row.name,
+    code: row.code,
+    warehouse_name: row.warehouse_name,
+    //chatgpt
+    warehouseNames: row.warehouse_name
+      ? [row.warehouse_name]
+      : [],
+
+    phone_number: row.phone_number,
+    phoneNumber: row.phone_number,
+    whatsapp_number: row.whatsapp_number,
+    whatsapp: row.whatsapp_number,
+    email: row.email,
+    sex: row.sex,
+    present_address: row.present_address,
+    presentAddress: row.present_address,
+    permanent_address: row.permanent_address,
+    permanentAddress: row.permanent_address,
+    warehouse_id: row.warehouse_id,
+    country_id: row.country_id,
+    state_id: row.state_id,
+    district_id: row.district_id,
+    city_id: row.city_id,
+    pincode_id: row.pincode_id,
+    adharcard_number: row.adharcard_number,
+    adharcard_front: row.adharcard_front,
+    adharcard_front_url: row.adharcard_front ? `${base}${row.adharcard_front}` : null,
+    adharcard_back: row.adharcard_back,
+    adharcard_back_url: row.adharcard_back ? `${base}${row.adharcard_back}` : null,
+    pancard_number: row.pancard_number,
+    pancard: row.pancard,
+    pancard_url: row.pancard ? `${base}${row.pancard}` : null,
+    photo: row.photo,
+    photo_url: row.photo ? `${base}${row.photo}` : null,
+    bank_name: row.bank_name,
+    ifsc_code: row.ifsc_code,
+    account_number: row.account_number,
+    vehicle_specification: row.vehicle_specification,
+    vehicle_reg_plate_number: row.vehicle_reg_plate_number,
+    vehicle_type: row.vehicle_type,
+    license_type: row.license_type,
+    license_number: row.license_number,
+    date_of_issue: row.date_of_issue,
+    valid_till: row.valid_till,
+    status: row.status,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 };
 
 exports.getDeliveryBoys = (req, res) => {
-  ensureTable(res, () => {
-    db.query("SELECT * FROM delivery_boys ORDER BY id DESC", (err, result) => {
-      if (err) return sendDbError(res, err, "Failed to fetch delivery boys");
-      res.json((Array.isArray(result) ? result : []).map(normalizeRow));
+  db.query("SELECT * FROM delivery_boys ORDER BY delivery_boy_id DESC", (err, rows) => {
+    if (err) return sendDbError(res, err, "Failed to fetch delivery boys");
+    res.json((rows || []).map((r) => normalizeRow(r, req)));
+  });
+};
+
+exports.getDeliveryBoyById = (req, res) => {
+  db.query("SELECT * FROM delivery_boys WHERE delivery_boy_id = ?", [req.params.id], (err, rows) => {
+    if (err) return sendDbError(res, err, "Failed to fetch delivery boy");
+    if (!rows || rows.length === 0) return res.status(404).json({ message: "Delivery boy not found" });
+    res.json(normalizeRow(rows[0], req));
+  });
+};
+
+exports.createDeliveryBoy = async (req, res) => {
+  const payload = readPayload(req);
+  try {
+    await resolveIdsFromWarehouse(payload);
+  } catch (err) {
+    return sendDbError(res, err, "Failed to resolve warehouse mapping");
+  }
+  const validationError = validatePayload(payload);
+  if (validationError) return res.status(400).json({ message: validationError });
+
+  const sql = `
+    INSERT INTO delivery_boys (
+      name, code, phone_number, whatsapp_number, email, sex,
+      present_address, permanent_address, warehouse_id, country_id, state_id, district_id, city_id, pincode_id,
+      adharcard_number, adharcard_front, adharcard_back, pancard_number, pancard, photo,
+      bank_name, ifsc_code, account_number,
+      vehicle_specification, vehicle_reg_plate_number, vehicle_type,
+      license_type, license_number, date_of_issue, valid_till,
+      status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  const values = [
+    payload.name, payload.code, payload.phone_number, payload.whatsapp_number, payload.email, payload.sex,
+    payload.present_address, payload.permanent_address, payload.warehouse_id, payload.country_id, payload.state_id, payload.district_id, payload.city_id, payload.pincode_id,
+    payload.adharcard_number, payload.adharcard_front, payload.adharcard_back, payload.pancard_number, payload.pancard, payload.photo,
+    payload.bank_name, payload.ifsc_code, payload.account_number,
+    payload.vehicle_specification, payload.vehicle_reg_plate_number, payload.vehicle_type,
+    payload.license_type, payload.license_number, payload.date_of_issue, payload.valid_till,
+    payload.status, payload.created_at, payload.updated_at,
+  ];
+
+  db.query(sql, values, (err, result) => {
+    if (err) return sendDbError(res, err, "Failed to create delivery boy");
+    res.status(201).json({
+      message: "Delivery boy created",
+      delivery_boy_id: result.insertId,
+      id: result.insertId,
     });
   });
 };
 
-exports.createDeliveryBoy = (req, res) => {
-  const validationMessage = validateDeliveryBoy(req.body || {});
-  if (validationMessage) return res.status(400).json({ message: validationMessage });
+exports.updateDeliveryBoy = async (req, res) => {
+  const payload = readPayload(req);
+  try {
+    await resolveIdsFromWarehouse(payload);
+  } catch (err) {
+    return sendDbError(res, err, "Failed to resolve warehouse mapping");
+  }
+  const validationError = validatePayload(payload);
+  if (validationError) return res.status(400).json({ message: validationError });
 
-  ensureTable(res, () => {
-    const sql = `
-      INSERT INTO delivery_boys (
-        name, full_address, phone_number, whatsapp, email,
-        adhar_name, adhar_size, adhar_type, adhar_url,
-        pan_name, pan_size, pan_type, pan_url,
-        passport_photo_name, passport_photo_size, passport_photo_type, passport_photo_url,
-        status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
+  payload.created_at = undefined;
+  payload.updated_at = new Date();
 
-    db.query(sql, valuesFromBody(req.body), (err, result) => {
-      if (err) return sendDbError(res, err, "Failed to create delivery boy");
-      res.json({ message: "Delivery boy created", id: result.insertId });
-    });
+  const sql = `
+    UPDATE delivery_boys SET
+      name=?, code=?, phone_number=?, whatsapp_number=?, email=?, sex=?,
+      present_address=?, permanent_address=?, warehouse_id=?, country_id=?, state_id=?, district_id=?, city_id=?, pincode_id=?,
+      adharcard_number=?, adharcard_front=?, adharcard_back=?, pancard_number=?, pancard=?, photo=?,
+      bank_name=?, ifsc_code=?, account_number=?,
+      vehicle_specification=?, vehicle_reg_plate_number=?, vehicle_type=?,
+      license_type=?, license_number=?, date_of_issue=?, valid_till=?,
+      status=?, updated_at=?
+    WHERE delivery_boy_id=?
+  `;
+
+  const values = [
+    payload.name,
+    payload.code,
+    payload.phone_number,
+    payload.whatsapp_number,
+    payload.email,
+    payload.sex,
+    payload.present_address,
+    payload.permanent_address,
+    payload.warehouse_id,
+    payload.country_id,
+    payload.state_id,
+    payload.district_id,
+    payload.city_id,
+    payload.pincode_id,
+    payload.adharcard_number,
+    payload.adharcard_front,
+    payload.adharcard_back,
+    payload.pancard_number,
+    payload.pancard,
+    payload.photo,
+    payload.bank_name,
+    payload.ifsc_code,
+    payload.account_number,
+    payload.vehicle_specification,
+    payload.vehicle_reg_plate_number,
+    payload.vehicle_type,
+    payload.license_type,
+    payload.license_number,
+    payload.date_of_issue,
+    payload.valid_till,
+    payload.status,
+    payload.updated_at,
+    req.params.id,
+  ];
+
+  db.query(sql, values, (err) => {
+    if (err) return sendDbError(res, err, "Failed to update delivery boy");
+    res.json({ message: "Delivery boy updated" });
   });
 };
 
-exports.updateDeliveryBoy = (req, res) => {
-  const validationMessage = validateDeliveryBoy(req.body || {});
-  if (validationMessage) return res.status(400).json({ message: validationMessage });
+// exports.deleteDeliveryBoy = (req, res) => {
+//   db.query("DELETE FROM delivery_boys WHERE delivery_boy_id=?", [req.params.id], (err) => {
+//     if (err) return sendDbError(res, err, "Failed to delete delivery boy");
+//     res.json({ message: "Delivery boy deleted" });
+//   });
+// };
 
-  ensureTable(res, () => {
-    const sql = `
-      UPDATE delivery_boys SET
-        name=?, full_address=?, phone_number=?, whatsapp=?, email=?,
-        adhar_name=?, adhar_size=?, adhar_type=?, adhar_url=?,
-        pan_name=?, pan_size=?, pan_type=?, pan_url=?,
-        passport_photo_name=?, passport_photo_size=?, passport_photo_type=?, passport_photo_url=?,
-        status=?
-      WHERE id=?
-    `;
 
-    db.query(sql, [...valuesFromBody(req.body), req.params.id], (err) => {
-      if (err) return sendDbError(res, err, "Failed to update delivery boy");
-      res.json({ message: "Delivery boy updated" });
-    });
+exports.getDeliveryBoys = (req, res) => {
+
+  const sql = `
+    SELECT
+      db.*,
+      w.warehouse_name
+
+    FROM delivery_boys db
+
+    LEFT JOIN warehouses w
+      ON db.warehouse_id = w.warehouse_id
+
+    ORDER BY db.delivery_boy_id DESC
+  `;
+
+  db.query(sql, (err, rows) => {
+
+    if (err) {
+      return sendDbError(res, err, "Failed to fetch delivery boys");
+    }
+
+    res.json((rows || []).map((r) => normalizeRow(r, req)));
+
   });
-};
 
-exports.deleteDeliveryBoy = (req, res) => {
-  ensureTable(res, () => {
-    db.query("DELETE FROM delivery_boys WHERE id=?", [req.params.id], (err) => {
-      if (err) return sendDbError(res, err, "Failed to delete delivery boy");
-      res.json({ message: "Delivery boy deleted" });
-    });
-  });
 };
