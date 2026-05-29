@@ -436,3 +436,30 @@ exports.getDeliveryBoys = (req, res) => {
   });
 
 };
+
+
+
+exports.deleteDeliveryBoy = (req, res) => {
+
+  const sql = "DELETE FROM delivery_boys WHERE delivery_boy_id = ?";
+
+  db.query(sql, [req.params.id], (err, result) => {
+
+    if (err) {
+      return sendDbError(res, err, "Failed to delete delivery boy");
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        message: "Delivery boy not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Delivery boy deleted successfully",
+    });
+
+  });
+
+};
