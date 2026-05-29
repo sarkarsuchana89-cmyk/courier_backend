@@ -146,7 +146,8 @@ const toEventMeta = (row) => {
     tracking_label: row.tracking_label || "",
   note: row.note || "",
   user_name: row.created_by || "",
-
+   delivery_boy_code: row.delivery_boy_code || "",
+delivery_boy_name: row.delivery_boy_name || "",
   another_person: row.another_person || null,
   relation_name: row.relation_name || null,
   };
@@ -802,7 +803,8 @@ exports.createShipmentEvent = (req, res) => {
   const {
     event_type,
     status,
-
+    delivery_boy_code = null,
+  delivery_boy_name = null,
     // NEW GEO STRUCTURE
     from_country_id = null,
     from_state_id = null,
@@ -844,7 +846,14 @@ receiver_type = null,
     normalizeStatusValue(
       normalizedStatus || EVENT_TYPE_TO_STATUS[event_type]
     );
-
+  if (
+  resolvedType === "out_delivery" &&
+  (!delivery_boy_code || !delivery_boy_name)
+) {
+  return res.status(400).json({
+    message: "Delivery boy required for Out For Delivery"
+  });
+}
   if (!resolvedType) {
     return res.status(400).json({
       message: "event_type required or valid status mapping required"
@@ -903,6 +912,8 @@ receiver_type = null,
       to_city_id,
 
       branch_name,
+      delivery_boy_code,
+      delivery_boy_name,
       tracking_label,
       note,
       another_person,
@@ -910,7 +921,7 @@ receiver_type = null,
       event_time,
       created_by
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? , ?, ?)
   `;
 
   const values = [
@@ -929,6 +940,8 @@ receiver_type = null,
     finalToCityId,
 
     branch_name,
+    delivery_boy_code,
+    delivery_boy_name,
     tracking_label,
     note,
     receiver_type === "Another Person"
@@ -1009,7 +1022,8 @@ exports.updateShipmentEvent = (req, res) => {
   const {
     event_type,
     status,
-
+    delivery_boy_code = null,
+    delivery_boy_name = null,
     // NEW GEO STRUCTURE
     from_country_id = null,
     from_state_id = null,
@@ -1102,6 +1116,8 @@ exports.updateShipmentEvent = (req, res) => {
       to_city_id = ?,
 
       branch_name = ?,
+      delivery_boy_code = ?,
+      delivery_boy_name = ?,
       tracking_label = ?,
       note = ?,
 
@@ -1128,6 +1144,8 @@ exports.updateShipmentEvent = (req, res) => {
     finalToCityId,
 
     branch_name,
+    delivery_boy_code,
+    delivery_boy_name,
     tracking_label,
     note,
     event_time,
