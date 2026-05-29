@@ -85,7 +85,7 @@ const fileNameOnly = (value) => {
   if (!value) return null;
   const str = String(value).trim();
   if (!str) return null;
-  return path.basename(str);
+  return path.basename(str.replace(/\\/g, "/"));
 };
 
 const readPayload = (req) => {
@@ -97,38 +97,46 @@ const readPayload = (req) => {
   const adharFront = pick(
     fileNameOnly(files.adharcard_front?.[0]?.filename),
     fileNameOnly(files.adhar_front?.[0]?.filename),
-    body.adharcard_front,
-    body.adhar_front,
-    body.aadhaar_front,
-    body.aadharFront?.name,
-    body.aadharFront?.url
+    fileNameOnly(body.adharcard_front),
+    fileNameOnly(body.adhar_front),
+    fileNameOnly(body.aadhaar_front),
+    fileNameOnly(body.adharcard_front_url),
+    fileNameOnly(body.adhar_front_url),
+    fileNameOnly(body.aadharFront?.name),
+    fileNameOnly(body.aadharFront?.url)
   );
   const adharBack = pick(
     fileNameOnly(files.adharcard_back?.[0]?.filename),
     fileNameOnly(files.adhar_back?.[0]?.filename),
-    body.adharcard_back,
-    body.adhar_back,
-    body.aadhaar_back,
-    body.aadharBack?.name,
-    body.aadharBack?.url
+    fileNameOnly(body.adharcard_back),
+    fileNameOnly(body.adhar_back),
+    fileNameOnly(body.aadhaar_back),
+    fileNameOnly(body.adharcard_back_url),
+    fileNameOnly(body.adhar_back_url),
+    fileNameOnly(body.aadharBack?.name),
+    fileNameOnly(body.aadharBack?.url)
   );
   const pancard = pick(
     fileNameOnly(files.pancard?.[0]?.filename),
     fileNameOnly(files.pan_front?.[0]?.filename),
-    body.pancard,
-    body.pan_front,
-    body.panFront?.name,
-    body.panFront?.url,
-    body.panBack?.name,
-    body.panBack?.url
+    fileNameOnly(body.pancard),
+    fileNameOnly(body.pan_front),
+    fileNameOnly(body.pancard_url),
+    fileNameOnly(body.pan_front_url),
+    fileNameOnly(body.panFront?.name),
+    fileNameOnly(body.panFront?.url),
+    fileNameOnly(body.panBack?.name),
+    fileNameOnly(body.panBack?.url)
   );
   const photo = pick(
     fileNameOnly(files.photo?.[0]?.filename),
     fileNameOnly(files.passport_photo?.[0]?.filename),
-    body.photo,
-    body.passport_photo,
-    body.passportPhoto?.name,
-    body.passportPhoto?.url
+    fileNameOnly(body.photo),
+    fileNameOnly(body.passport_photo),
+    fileNameOnly(body.photo_url),
+    fileNameOnly(body.passport_photo_url),
+    fileNameOnly(body.passportPhoto?.name),
+    fileNameOnly(body.passportPhoto?.url)
   );
 
   return {
@@ -213,6 +221,10 @@ const validatePayload = (payload) => {
 
 const normalizeRow = (row, req) => {
   const base = `${req.protocol}://${req.get("host")}/uploads/`;
+  const adharFrontFile = fileNameOnly(row.adharcard_front);
+  const adharBackFile = fileNameOnly(row.adharcard_back);
+  const pancardFile = fileNameOnly(row.pancard);
+  const photoFile = fileNameOnly(row.photo);
   return {
     delivery_boy_id: row.delivery_boy_id,
     id: row.delivery_boy_id,
@@ -241,15 +253,15 @@ const normalizeRow = (row, req) => {
     city_id: row.city_id,
     pincode_id: row.pincode_id,
     adharcard_number: row.adharcard_number,
-    adharcard_front: row.adharcard_front,
-    adharcard_front_url: row.adharcard_front ? `${base}${row.adharcard_front}` : null,
-    adharcard_back: row.adharcard_back,
-    adharcard_back_url: row.adharcard_back ? `${base}${row.adharcard_back}` : null,
+    adharcard_front: adharFrontFile,
+    adharcard_front_url: adharFrontFile ? `${base}${adharFrontFile}` : null,
+    adharcard_back: adharBackFile,
+    adharcard_back_url: adharBackFile ? `${base}${adharBackFile}` : null,
     pancard_number: row.pancard_number,
-    pancard: row.pancard,
-    pancard_url: row.pancard ? `${base}${row.pancard}` : null,
-    photo: row.photo,
-    photo_url: row.photo ? `${base}${row.photo}` : null,
+    pancard: pancardFile,
+    pancard_url: pancardFile ? `${base}${pancardFile}` : null,
+    photo: photoFile,
+    photo_url: photoFile ? `${base}${photoFile}` : null,
     bank_name: row.bank_name,
     ifsc_code: row.ifsc_code,
     account_number: row.account_number,
@@ -420,6 +432,33 @@ exports.getDeliveryBoys = (req, res) => {
     }
 
     res.json((rows || []).map((r) => normalizeRow(r, req)));
+
+  });
+
+};
+
+
+
+exports.deleteDeliveryBoy = (req, res) => {
+
+  const sql = "DELETE FROM delivery_boys WHERE delivery_boy_id = ?";
+
+  db.query(sql, [req.params.id], (err, result) => {
+
+    if (err) {
+      return sendDbError(res, err, "Failed to delete delivery boy");
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        message: "Delivery boy not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Delivery boy deleted successfully",
+    });
 
   });
 

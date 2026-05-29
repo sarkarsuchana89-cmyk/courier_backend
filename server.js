@@ -1,7 +1,7 @@
 process.env.TZ = "Asia/Kolkata";
 const express = require("express");
 const cors = require("cors");
-
+const path = require("path");
 const stateRoutes = require("./routes/stateRoutes");
 const districtRoutes = require("./routes/districtRoutes");
 const cityRoutes = require("./routes/cityRoutes");
@@ -17,7 +17,11 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: "8mb" }));
-app.use("/uploads", express.static("uploads"));
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "uploads"))
+);
+
 app.use("/api/shipments", shipmentRoutes);
 app.use("/api/states", stateRoutes);
 app.use("/api/districts", districtRoutes);
