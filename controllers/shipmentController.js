@@ -1763,12 +1763,31 @@ const requestSql = `
 
       // ONLY WHEN APPROVED
       if (nextStatus !== "Accepted") {
+
+  if (nextStatus === "Rejected") {
+
+    return forceShipmentStatus(
+      request.shipment_id,
+      "Out for Delivery",
+      (syncErr) => {
+
+        if (syncErr) return sendError(res, syncErr);
+
         return res.json({
-          message: "Reschedule request status updated",
+          message: "Reschedule request rejected",
           id: requestId,
           status: nextStatus
         });
       }
+    );
+  }
+
+  return res.json({
+    message: "Reschedule request status updated",
+    id: requestId,
+    status: nextStatus
+  });
+}
 
       const shipmentSql = `
         UPDATE shipments
@@ -1777,24 +1796,33 @@ const requestSql = `
       `;
 
       db.query(
-        shipmentSql,
-        [
-          request.requested_date,
-          request.shipment_id
-        ],
-        (shipErr) => {
+  shipmentSql,
+  [
+    request.requested_date,
+    request.shipment_id
+  ],
+  (shipErr) => {
 
-          if (shipErr) return sendError(res, shipErr);
+    if (shipErr) return sendError(res, shipErr);
 
-          return res.json({
-            message: "Reschedule approved and shipment EDD updated",
-            id: requestId,
-            status: nextStatus,
-            expected_delivery_date: request.requested_date
-          });
+    forceShipmentStatus(
+      request.shipment_id,
+      "Reschedule Requested",
+      (syncErr) => {
 
-        }
-      );
+        if (syncErr) return sendError(res, syncErr);
+
+        return res.json({
+          message: "Reschedule approved and shipment EDD updated",
+          id: requestId,
+          status: nextStatus,
+          expected_delivery_date: request.requested_date
+        });
+      }
+    );
+
+  }
+);
     }
   );
 });
