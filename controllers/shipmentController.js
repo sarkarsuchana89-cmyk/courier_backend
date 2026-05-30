@@ -64,7 +64,7 @@ const EVENT_TYPE_TO_STATUS = {
   delivered: "Delivered",
   returned: "Returned",
   reschedule: "Reschedule Requested",
-  missed: "Missed",
+  missed: "Missing",
   refuse: "Refuse"
 };
 
@@ -90,8 +90,9 @@ const normalizeStatusValue = (value) => {
     "delivered in warehouse": "Delivered in Warehouse",
     returned: "Returned",
     "reschedule requested": "Reschedule Requested",
-    missed: "Missed",
-refuse: "Refuse",
+    missed: "Missing",
+    missing: "Missing",
+    refuse: "Refuse",
   };
   return map[raw.toLowerCase()] || raw;
 };
@@ -422,7 +423,8 @@ const STATUS_FLAG_UPDATES = {
   pickup_completed_flag: 1,
   in_transit_flag: 1,
   warehouse_reached_flag: 1,
-  out_for_delivery_flag: 1
+  out_for_delivery_flag: 1,
+  missed_flag:1
 },
 
 "Refuse": {
@@ -430,7 +432,8 @@ const STATUS_FLAG_UPDATES = {
   pickup_completed_flag: 1,
   in_transit_flag: 1,
   warehouse_reached_flag: 1,
-  out_for_delivery_flag: 1
+  out_for_delivery_flag: 1,
+  refuse_flag: 1
 },
   "Delivered": {
   product_placed_flag: 1,
@@ -1007,12 +1010,17 @@ db.query(
         return sendError(res, err);
       }
 
-      const shouldForceDeliveredStatus =
-        resolvedStatus === "Delivered" || resolvedType === "delivered";
-
+      const forcedFinalStatus =
+  resolvedType === "delivered" || resolvedStatus === "Delivered"
+    ? "Delivered"
+    : resolvedType === "missed" || resolvedStatus === "Missing"
+      ? "Missing"
+      : resolvedType === "refuse" || resolvedStatus === "Refuse"
+        ? "Refuse"
+        : "";
       const runStatusSync = (callback) => {
-        if (shouldForceDeliveredStatus) {
-          forceShipmentStatus(shipmentId, "Delivered", callback);
+        if (forcedFinalStatus) {
+          forceShipmentStatus(shipmentId, forcedFinalStatus, callback);
           return;
         }
         syncShipmentStatusFromEvents(shipmentId, callback);
@@ -1199,12 +1207,16 @@ exports.updateShipmentEvent = (req, res) => {
       });
     }
 
-    const shouldForceDeliveredStatus =
-      resolvedStatus === "Delivered" || resolvedType === "delivered";
+    const forcedFinalStatus =
+      resolvedType === "delivered" || resolvedStatus === "Delivered"
+        ? "Delivered"
+        : (resolvedType === "missed" || resolvedStatus === "Missing")
+          ? "Missing"
+          : "";
 
     const runStatusSync = (callback) => {
-      if (shouldForceDeliveredStatus) {
-        forceShipmentStatus(shipmentId, "Delivered", callback);
+      if (forcedFinalStatus) {
+        forceShipmentStatus(shipmentId, forcedFinalStatus, callback);
         return;
       }
       syncShipmentStatusFromEvents(shipmentId, callback);
