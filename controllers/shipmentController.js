@@ -486,6 +486,28 @@ db.query(updateSql, values, (updErr) => {
   });
 };
 
+const forceShipmentStatus = (shipmentId, nextStatusInput, done) => {
+  const nextStatus = normalizeStatusValue(nextStatusInput || "Pending");
+  const flagUpdates = STATUS_FLAG_UPDATES[nextStatus] || {};
+  const fields = ["status = ?"];
+  const values = [nextStatus];
+
+  Object.entries(flagUpdates).forEach(([key, value]) => {
+    fields.push(`${key} = ?`);
+    values.push(value);
+  });
+
+  values.push(shipmentId);
+
+  const updateSql = `
+    UPDATE shipments
+    SET ${fields.join(", ")}
+    WHERE id = ?
+  `;
+
+  db.query(updateSql, values, (err) => done(err, nextStatus));
+};
+
 // 🔥 CREATE WITH TRANSACTION
 exports.createShipment = (req, res) => {
   const errors = validate(req.body);
@@ -985,9 +1007,18 @@ db.query(
         return sendError(res, err);
       }
 
-      syncShipmentStatusFromEvents(
-        shipmentId,
-        (syncErr, statusAfterSync) => {
+      const shouldForceDeliveredStatus =
+        resolvedStatus === "Delivered" || resolvedType === "delivered";
+
+      const runStatusSync = (callback) => {
+        if (shouldForceDeliveredStatus) {
+          forceShipmentStatus(shipmentId, "Delivered", callback);
+          return;
+        }
+        syncShipmentStatusFromEvents(shipmentId, callback);
+      };
+
+      runStatusSync((syncErr, statusAfterSync) => {
 
           if (syncErr) {
             return sendError(res, syncErr);
@@ -1168,9 +1199,18 @@ exports.updateShipmentEvent = (req, res) => {
       });
     }
 
-    syncShipmentStatusFromEvents(
-      shipmentId,
-      (syncErr, statusAfterSync) => {
+    const shouldForceDeliveredStatus =
+      resolvedStatus === "Delivered" || resolvedType === "delivered";
+
+    const runStatusSync = (callback) => {
+      if (shouldForceDeliveredStatus) {
+        forceShipmentStatus(shipmentId, "Delivered", callback);
+        return;
+      }
+      syncShipmentStatusFromEvents(shipmentId, callback);
+    };
+
+    runStatusSync((syncErr, statusAfterSync) => {
 
         if (syncErr) {
           return sendError(res, syncErr);
