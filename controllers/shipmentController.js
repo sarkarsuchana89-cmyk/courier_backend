@@ -1508,7 +1508,7 @@ exports.createRescheduleRequest = (req, res) => {
 
   const {
     requested_date,
-    time_slot,
+    time_slot, 
     requested_time,
     requested_by_email
   } = req.body;
@@ -1553,7 +1553,7 @@ exports.createRescheduleRequest = (req, res) => {
           shipmentId,
           requested_date,
           time_slot || null,
-           requested_time || null,
+          requested_time || null,
           requested_by_email || null,
           createdAt
         ],
@@ -1677,10 +1677,73 @@ exports.updateRescheduleRequestStatus = (req, res) => {
     SET status = ?
     WHERE id = ?
   `;
+const requestSql = `
+  SELECT
+    shipment_id,
+    requested_date
+  FROM shipment_reschedule_requests
+  WHERE id = ?
+`;
+  db.query(requestSql, [requestId], (reqErr, reqRows) => {
 
-  db.query(updateSql, [nextStatus, requestId], (updErr, updResult) => {
-    if (updErr) return sendError(res, updErr);
-    if (!updResult.affectedRows) return res.status(404).json({ message: "Reschedule request not found" });
-    return res.json({ message: "Reschedule request status updated", id: requestId, status: nextStatus });
-  });
+  if (reqErr) return sendError(res, reqErr);
+
+  if (!reqRows.length) {
+    return res.status(404).json({
+      message: "Reschedule request not found"
+    });
+  }
+
+  const request = reqRows[0];
+
+  db.query(
+    updateSql,
+    [nextStatus, requestId],
+    (updErr, updResult) => {
+
+      if (updErr) return sendError(res, updErr);
+
+      if (!updResult.affectedRows) {
+        return res.status(404).json({
+          message: "Reschedule request not found"
+        });
+      }
+
+      // ONLY WHEN APPROVED
+      if (nextStatus !== "Accepted") {
+        return res.json({
+          message: "Reschedule request status updated",
+          id: requestId,
+          status: nextStatus
+        });
+      }
+
+      const shipmentSql = `
+        UPDATE shipments
+        SET expected_delivery_date = ?
+        WHERE id = ?
+      `;
+
+      db.query(
+        shipmentSql,
+        [
+          request.requested_date,
+          request.shipment_id
+        ],
+        (shipErr) => {
+
+          if (shipErr) return sendError(res, shipErr);
+
+          return res.json({
+            message: "Reschedule approved and shipment EDD updated",
+            id: requestId,
+            status: nextStatus,
+            expected_delivery_date: request.requested_date
+          });
+
+        }
+      );
+    }
+  );
+});
 };
