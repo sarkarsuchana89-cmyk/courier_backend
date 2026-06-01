@@ -168,7 +168,7 @@ const readPayload = (req) => {
     ),
     vehicle_reg_plate_number: String(
       pick(body.vehicle_reg_plate_number, body.vehicle_registration_number, body.vehicleNumber, body.vehicleRegistrationNumber)
-    || "").trim() || null,
+      || "").trim() || null,
     vehicle_type: normalizeVehicleSpec(
       pick(body.vehicle_type, body.vehicleType, body.vehicleSpecificationClassification, body.vehicle_classification)
     ),
@@ -193,7 +193,55 @@ const runQuery = (sql, values = []) =>
       resolve(rows);
     });
   });
+const parseWarehouseIds = (raw) => {
+  if (!raw) return [];
 
+  if (Array.isArray(raw)) {
+    return raw.map(Number).filter(Boolean);
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map(Number).filter(Boolean);
+    }
+  } catch (e) { }
+
+  return [Number(raw)].filter(Boolean);
+};
+
+const saveWarehouseMappings = async (
+  deliveryBoyId,
+  warehouseIds = []
+) => {
+
+  await runQuery(
+    `
+      DELETE FROM delivery_boy_warehouses
+      WHERE delivery_boy_id = ?
+    `,
+    [deliveryBoyId]
+  );
+
+  if (!warehouseIds.length) return;
+
+  const values = warehouseIds.map((warehouseId) => [
+    deliveryBoyId,
+    warehouseId
+  ]);
+
+  await runQuery(
+    `
+      INSERT INTO delivery_boy_warehouses
+      (
+        delivery_boy_id,
+        warehouse_id
+      )
+      VALUES ?
+    `,
+    [values]
+  );
+};
 const resolveIdsFromWarehouse = async (payload) => {
   if (!payload.warehouse_id) return;
   const rows = await runQuery(
@@ -230,11 +278,20 @@ const normalizeRow = (row, req) => {
     id: row.delivery_boy_id,
     name: row.name,
     code: row.code,
-    warehouse_name: row.warehouse_name,
-    //chatgpt
-    warehouseNames: row.warehouse_name
-      ? [row.warehouse_name]
+    warehouse_name: row.warehouse_names || "",
+    warehouseIds: row.warehouse_ids
+      ? row.warehouse_ids
+        .split(",")
+        .map(id => String(id).trim())
+        .filter(Boolean)
       : [],
+    warehouseNames: row.warehouse_names
+      ? row.warehouse_names
+        .split(",")
+        .map(name => name.trim())
+        .filter(Boolean)
+      : [],
+
 
     phone_number: row.phone_number,
     phoneNumber: row.phone_number,
@@ -295,6 +352,8 @@ exports.getDeliveryBoyById = (req, res) => {
 
 exports.createDeliveryBoy = async (req, res) => {
   const payload = readPayload(req);
+  const warehouseIds =
+    parseWarehouseIds(req.body.warehouseIds);
   try {
     await resolveIdsFromWarehouse(payload);
   } catch (err) {
@@ -325,18 +384,48 @@ exports.createDeliveryBoy = async (req, res) => {
     payload.status, payload.created_at, payload.updated_at,
   ];
 
-  db.query(sql, values, (err, result) => {
-    if (err) return sendDbError(res, err, "Failed to create delivery boy");
-    res.status(201).json({
-      message: "Delivery boy created",
-      delivery_boy_id: result.insertId,
-      id: result.insertId,
-    });
+  db.query(sql, values, async (err, result) => {
+
+    if (err) {
+      return sendDbError(
+        res,
+        err,
+        "Failed to create delivery boy"
+      );
+    }
+
+    try {
+
+      await saveWarehouseMappings(
+        result.insertId,
+        warehouseIds.length
+          ? warehouseIds
+          : [payload.warehouse_id]
+      );
+
+      return res.status(201).json({
+        message: "Delivery boy created",
+        delivery_boy_id: result.insertId,
+        id: result.insertId,
+      });
+
+    } catch (mappingErr) {
+
+      return sendDbError(
+        res,
+        mappingErr,
+        "Failed to save warehouse mappings"
+      );
+
+    }
+
   });
 };
 
 exports.updateDeliveryBoy = async (req, res) => {
   const payload = readPayload(req);
+  const warehouseIds =
+    parseWarehouseIds(req.body.warehouseIds);
   try {
     await resolveIdsFromWarehouse(payload);
   } catch (err) {
@@ -396,9 +485,39 @@ exports.updateDeliveryBoy = async (req, res) => {
     req.params.id,
   ];
 
-  db.query(sql, values, (err) => {
-    if (err) return sendDbError(res, err, "Failed to update delivery boy");
-    res.json({ message: "Delivery boy updated" });
+  db.query(sql, values, async (err) => {
+
+    if (err) {
+      return sendDbError(
+        res,
+        err,
+        "Failed to update delivery boy"
+      );
+    }
+
+    try {
+
+      await saveWarehouseMappings(
+        req.params.id,
+        warehouseIds.length
+          ? warehouseIds
+          : [payload.warehouse_id]
+      );
+
+      return res.json({
+        message: "Delivery boy updated"
+      });
+
+    } catch (mappingErr) {
+
+      return sendDbError(
+        res,
+        mappingErr,
+        "Failed to save warehouse mappings"
+      );
+
+    }
+
   });
 };
 
@@ -414,15 +533,26 @@ exports.getDeliveryBoys = (req, res) => {
 
   const sql = `
     SELECT
-      db.*,
-      w.warehouse_name
+  db.*,
+  GROUP_CONCAT(
+    DISTINCT dbw.warehouse_id
+  ) AS warehouse_ids,
 
-    FROM delivery_boys db
+  GROUP_CONCAT(
+    DISTINCT w.warehouse_name
+  ) AS warehouse_names
 
-    LEFT JOIN warehouses w
-      ON db.warehouse_id = w.warehouse_id
+FROM delivery_boys db
 
-    ORDER BY db.delivery_boy_id DESC
+LEFT JOIN delivery_boy_warehouses dbw
+  ON db.delivery_boy_id = dbw.delivery_boy_id
+
+LEFT JOIN warehouses w
+  ON dbw.warehouse_id = w.warehouse_id
+
+GROUP BY db.delivery_boy_id
+
+ORDER BY db.delivery_boy_id DESC
   `;
 
   db.query(sql, (err, rows) => {

@@ -105,14 +105,14 @@ const createWarehouse = (req, res) => {
                 email,
                 status
             } = req.body;
-if (!warehouse_code || !warehouse_code.trim()) {
-    return res.status(400).json({
-        success: false,
-        message: "Warehouse code is required"
-    });
-}
+            if (!warehouse_code || !warehouse_code.trim()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Warehouse code is required"
+                });
+            }
 
-const normalizedWarehouseCode = warehouse_code.trim().toUpperCase();
+            const normalizedWarehouseCode = warehouse_code.trim().toUpperCase();
             const resolvedPincodeId = await resolvePincodeId({
                 pincode_id,
                 pincode,
@@ -166,11 +166,11 @@ const normalizedWarehouseCode = warehouse_code.trim().toUpperCase();
             });
         } catch (error) {
             if (error.code === "ER_DUP_ENTRY") {
-    return res.status(400).json({
-        success: false,
-        message: "Warehouse code already exists"
-    });
-}
+                return res.status(400).json({
+                    success: false,
+                    message: "Warehouse code already exists"
+                });
+            }
             console.error("Warehouse Insert Error:", error);
 
             return res.status(500).json({
@@ -203,10 +203,26 @@ const getWarehouses = (req, res) => {
             p.location,
 
             w.phone_number,
-            w.whatsapp_number,
-            w.email,
-            w.status,
-            w.created_at
+w.whatsapp_number,
+w.email,
+w.status,
+w.created_at,
+
+(
+    SELECT GROUP_CONCAT(DISTINCT db2.delivery_boy_id)
+    FROM delivery_boy_warehouses dbw2
+    JOIN delivery_boys db2
+        ON dbw2.delivery_boy_id = db2.delivery_boy_id
+    WHERE dbw2.warehouse_id = w.warehouse_id
+) AS deliveryBoyIds,
+
+(
+    SELECT GROUP_CONCAT(DISTINCT db2.name)
+    FROM delivery_boy_warehouses dbw2
+    JOIN delivery_boys db2
+        ON dbw2.delivery_boy_id = db2.delivery_boy_id
+    WHERE dbw2.warehouse_id = w.warehouse_id
+) AS deliveryBoyNames
 
         FROM warehouses w
 
@@ -313,14 +329,14 @@ const updateWarehouse = (req, res) => {
                 email,
                 status
             } = req.body;
-      
- if (!warehouse_code || !warehouse_code.trim()) {
-    return res.status(400).json({
-        success: false,
-        message: "Warehouse code is required"
-    });
-}
- const normalizedWarehouseCode = warehouse_code.trim().toUpperCase();
+
+            if (!warehouse_code || !warehouse_code.trim()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Warehouse code is required"
+                });
+            }
+            const normalizedWarehouseCode = warehouse_code.trim().toUpperCase();
             const resolvedPincodeId = await resolvePincodeId({
                 pincode_id,
                 pincode,
@@ -374,11 +390,11 @@ const updateWarehouse = (req, res) => {
             });
         } catch (error) {
             if (error.code === "ER_DUP_ENTRY") {
-    return res.status(400).json({
-        success: false,
-        message: "Warehouse code already exists"
-    });
-}
+                return res.status(400).json({
+                    success: false,
+                    message: "Warehouse code already exists"
+                });
+            }
             console.error("Update Warehouse Error:", error);
 
             return res.status(500).json({
