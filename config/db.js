@@ -1,102 +1,84 @@
 const mysql = require("mysql2");
 require("dotenv").config();
 
-const dbName = process.env.DB_NAME || "admin";
-
-const isCloud =
-  process.env.DB_HOST &&
-  process.env.DB_HOST !== "localhost" &&
-  process.env.DB_HOST !== "127.0.0.1";
+const dbType = process.env.DB_TYPE || "local";
 
 const commonConfig = {
-  host: process.env.DB_HOST || "localhost",
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "Your Local password",
-  database: dbName,
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
 };
 
 let db;
 
-if (isCloud) {
-  db = mysql.createPool({
-    ...commonConfig,
-    port: 4000, // TiDB port
-    waitForConnections: true,
-    connectionLimit: 10,
-    ssl: { minVersion: "TLSv1.2" },
-  });
+switch (dbType.toLowerCase()) {
+  case "tidb":
+    console.log("🔍 Database Type: TiDB");
 
+    db = mysql.createPool({
+      ...commonConfig,
+      waitForConnections: true,
+      connectionLimit: 10,
+      ssl: {
+        minVersion: "TLSv1.2",
+      },
+    });
 
-  db.getConnection((err, conn) => {
-    if (err) {
-      console.error("❌ TiDB connection failed:", err.message);
-    } else {
-      console.log(`✅ TiDB Connected (db: ${dbName})`);
-      conn.release();
-    }
-  });
-} else {
-  // 🖥️ Local MySQL → keep your old behavior
-  db = mysql.createConnection(commonConfig);
+    db.getConnection((err, conn) => {
+      if (err) {
+        console.error("❌ TiDB Connection Failed:", err.message);
+      } else {
+        console.log(`✅ Connected to TiDB`);
+        console.log(`📍 Host: ${process.env.DB_HOST}`);
+        console.log(`📂 Database: ${process.env.DB_NAME}`);
+        conn.release();
+      }
+    });
 
-  db.connect((err) => {
-    if (err) {
-      console.error("❌ Local MySQL connection failed:", err.message);
-      throw err;
-    }
-    console.log(`✅ Local MySQL Connected (db: ${dbName})`);
-  });
+    break;
+
+  case "hostinger":
+    console.log("🔍 Database Type: Hostinger");
+
+    db = mysql.createPool({
+      ...commonConfig,
+      waitForConnections: true,
+      connectionLimit: 10,
+    });
+
+    db.getConnection((err, conn) => {
+      if (err) {
+        console.error("❌ Hostinger Connection Failed:", err.message);
+      } else {
+        console.log(`✅ Connected to Hostinger MySQL`);
+        console.log(`📍 Host: ${process.env.DB_HOST}`);
+        console.log(`📂 Database: ${process.env.DB_NAME}`);
+        conn.release();
+      }
+    });
+
+    break;
+
+  case "local":
+  default:
+    console.log("🔍 Database Type: Local MySQL");
+
+    db = mysql.createConnection(commonConfig);
+
+    db.connect((err) => {
+      if (err) {
+        console.error("❌ Local MySQL Connection Failed:", err.message);
+        return;
+      }
+
+      console.log(`✅ Connected to Local MySQL`);
+      console.log(`📍 Host: ${process.env.DB_HOST}`);
+      console.log(`📂 Database: ${process.env.DB_NAME}`);
+    });
+
+    break;
 }
 
 module.exports = db;
-
-
-
-
-
-
-
-
-
-
-// const mysql = require("mysql2/promise");
-// require("dotenv").config();
-
-// const dbName = process.env.DB_NAME || "admin";
-
-// const isCloud =
-//   process.env.DB_HOST &&
-//   process.env.DB_HOST !== "localhost" &&
-//   process.env.DB_HOST !== "127.0.0.1";
-
-// const commonConfig = {
-//   host: process.env.DB_HOST || "localhost",
-//   user: process.env.DB_USER || "root",
-//   password: process.env.DB_PASSWORD || "Your Local password",
-//   database: dbName,
-// };
-
-// let db;
-
-// if (isCloud) {
-//   db = mysql.createPool({
-//     ...commonConfig,
-//     port: 4000,
-//     waitForConnections: true,
-//     connectionLimit: 10,
-//     ssl: { minVersion: "TLSv1.2" },
-//   });
-
-//   console.log(`✅ TiDB Connected (db: ${dbName})`);
-
-// } else {
-//   db = mysql.createPool({
-//     ...commonConfig,
-//     waitForConnections: true,
-//     connectionLimit: 10,
-//   });
-
-//   console.log(`✅ Local MySQL Connected (db: ${dbName})`);
-// }
-
-// module.exports = db;
